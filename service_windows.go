@@ -329,40 +329,80 @@ func desktopName(d uintptr) string {
 	return windows.UTF16ToString(buf[:])
 }
 
-// inputDesktop is the desktop the helper's thread is on.
-type inputDesktop struct {
-	h    uintptr // opened by the helper; 0 while on the one it started on
+// deskWorker replays input on one desktop. SetThreadDesktop refuses a
+// thread that already has windows or hooks, which other programs can put on
+// the helper's threads (they did on a Legion Go), so each desktop gets a
+// fresh thread that switches before doing anything else.
+type deskWorker struct {
 	name string
+	h    uintptr // the desktop, open while the thread is on it
+	in   chan []byte
+	done chan struct{}
 }
 
-// follow moves the helper's thread to the desktop receiving input: the
+// inputDesktop sends input to the worker of the desktop receiving it: the
 // normal one, the administrator prompt or the lock screen.
-func (cur *inputDesktop) follow() {
-	d, _, _ := pOpenInputDesktop.Call(0, 0, uintptr(windows.GENERIC_ALL))
-	if d == 0 {
-		return
+type inputDesktop struct {
+	inj  *winInjector
+	w    *deskWorker
+	done uintptr // desktop of the last worker, closed at the next switch
+}
+
+func (cur *inputDesktop) replay(msg []byte) {
+	if d, _, _ := pOpenInputDesktop.Call(0, 0, uintptr(windows.GENERIC_ALL)); d != 0 {
+		if name := desktopName(d); cur.w == nil || cur.w.name != name {
+			cur.stop()
+			cur.w = startDeskWorker(d, name, cur.inj)
+		} else {
+			pCloseDesktop.Call(d)
+		}
 	}
-	name := desktopName(d)
-	if name == cur.name {
-		pCloseDesktop.Call(d)
-		return
+	if cur.w == nil {
+		cur.w = startDeskWorker(0, "", cur.inj)
 	}
-	if r, _, err := pSetThreadDesktop.Call(d); r == 0 {
-		logf("passaggio al desktop %s: %v", name, err)
-		pCloseDesktop.Call(d)
-		return
+	cur.w.in <- msg
+}
+
+// stop waits for the current worker to replay what it was given.
+func (cur *inputDesktop) stop() {
+	if cur.w != nil {
+		close(cur.w.in)
+		<-cur.w.done
+		if cur.done != 0 {
+			pCloseDesktop.Call(cur.done) // that thread has surely ended by now
+		}
+		cur.done, cur.w = cur.w.h, nil
 	}
-	if cur.h != 0 {
-		pCloseDesktop.Call(cur.h)
-	}
-	cur.h, cur.name = d, name
-	logf("desktop attivo: %s", name)
+}
+
+// startDeskWorker starts a worker on desktop d; with d 0 it replays wherever
+// its thread is.
+func startDeskWorker(d uintptr, name string, inj *winInjector) *deskWorker {
+	w := &deskWorker{name: name, h: d, in: make(chan []byte, 256), done: make(chan struct{})}
+	go func() {
+		// The thread is never unlocked, so Go ends it with the goroutine and
+		// no later goroutine inherits its desktop.
+		runtime.LockOSThread()
+		defer close(w.done)
+		if d != 0 {
+			// Before any other call that could give the thread a window or
+			// a hook.
+			if r, _, err := pSetThreadDesktop.Call(d); r == 0 {
+				logf("passaggio al desktop %s: %v", name, err)
+			} else {
+				logf("desktop attivo: %s", name)
+			}
+		}
+		for msg := range w.in {
+			replayHelperMsg(inj, msg)
+		}
+	}()
+	return w
 }
 
 func runInputHelper() {
 	inHelper = true
 	serviceLog()
-	runtime.LockOSThread() // SetThreadDesktop works per thread
 	logf("aiutante avviato (Ponte %s)", version)
 	sd, err := windows.SecurityDescriptorFromString("O:SYD:(A;;GA;;;SY)(A;;GRGW;;;IU)") // SYSTEM and signed-in users
 	if err != nil {
@@ -372,8 +412,7 @@ func runInputHelper() {
 	sa := &windows.SecurityAttributes{SecurityDescriptor: sd}
 	sa.Length = uint32(unsafe.Sizeof(*sa))
 	name, _ := windows.UTF16PtrFromString(pipeName)
-	inj := &winInjector{}
-	desk := &inputDesktop{}
+	desk := &inputDesktop{inj: &winInjector{}}
 	for {
 		h, err := windows.CreateNamedPipe(name,
 			windows.PIPE_ACCESS_INBOUND|windows.FILE_FLAG_FIRST_PIPE_INSTANCE,
@@ -386,7 +425,7 @@ func runInputHelper() {
 		}
 		if err := windows.ConnectNamedPipe(h, nil); err == nil || err == windows.ERROR_PIPE_CONNECTED {
 			logf("Ponte collegato all'aiutante")
-			serveHelper(h, inj, desk)
+			serveHelper(h, desk)
 			logf("Ponte scollegato dall'aiutante")
 		}
 		windows.DisconnectNamedPipe(h)
@@ -397,7 +436,7 @@ func runInputHelper() {
 // serveHelper replays the input Ponte sends: each message is one byte of
 // length, then a mouse, button, wheel or key message of the network
 // protocol.
-func serveHelper(h windows.Handle, inj *winInjector, desk *inputDesktop) {
+func serveHelper(h windows.Handle, desk *inputDesktop) {
 	var buf [256]byte
 	read := func(p []byte) error {
 		for len(p) > 0 {
@@ -423,29 +462,33 @@ func serveHelper(h windows.Handle, inj *winInjector, desk *inputDesktop) {
 		if err := read(buf[:n]); err != nil {
 			return
 		}
-		desk.follow()
-		r := &rbuf{b: buf[1:n]}
-		switch buf[0] {
-		case msgMouse:
-			x, y := r.i32(), r.i32()
-			if r.err == nil {
-				inj.MouseAbs(int(x), int(y))
-			}
-		case msgButton:
-			b, d := r.u8(), r.u8()
-			if r.err == nil {
-				inj.Button(b, d != 0)
-			}
-		case msgWheel:
-			axis, delta := r.u8(), int16(r.u16())
-			if r.err == nil {
-				inj.Wheel(axis, int(delta))
-			}
-		case msgKey:
-			code, state := r.u16(), r.u8()
-			if r.err == nil {
-				inj.Key(code, state)
-			}
+		desk.replay(append([]byte(nil), buf[:n]...))
+	}
+}
+
+// replayHelperMsg replays one message of the network protocol.
+func replayHelperMsg(inj *winInjector, msg []byte) {
+	r := &rbuf{b: msg[1:]}
+	switch msg[0] {
+	case msgMouse:
+		x, y := r.i32(), r.i32()
+		if r.err == nil {
+			inj.MouseAbs(int(x), int(y))
+		}
+	case msgButton:
+		b, d := r.u8(), r.u8()
+		if r.err == nil {
+			inj.Button(b, d != 0)
+		}
+	case msgWheel:
+		axis, delta := r.u8(), int16(r.u16())
+		if r.err == nil {
+			inj.Wheel(axis, int(delta))
+		}
+	case msgKey:
+		code, state := r.u16(), r.u8()
+		if r.err == nil {
+			inj.Key(code, state)
 		}
 	}
 }
