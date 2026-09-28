@@ -160,6 +160,7 @@ kbd{display:inline-block;font-family:inherit;font-weight:600;font-size:12.5px;li
 .alert .help{color:var(--muted);font-size:14px;white-space:pre-wrap}
 .alert pre{white-space:pre-wrap;word-break:break-all;background:var(--card);border-radius:10px;padding:10px;font-size:12px;margin:10px 0 0;color:var(--text)}
 .alert .acts{display:flex;gap:8px;margin-top:12px}
+.alert.news{background:var(--accent-soft)}.alert.news svg{color:var(--accent)}
 
 /* modal */
 .veil{position:fixed;inset:0;background:rgba(10,12,30,.45);backdrop-filter:blur(6px);display:none;place-items:center;z-index:50;padding:20px}
@@ -358,7 +359,7 @@ function offline() {
 
 function render() {
   $("#myname").textContent = S.name;
-  set("update", S.update ? `<div class="alert">${icon.info}<div style="flex:1"><b>È disponibile Ponte ${esc(S.update)}</b><div class="help">Questo computer ha la versione ${esc(S.version)}. Ponte si riavvia da solo in pochi secondi; aggiorna anche l'altro computer.</div>
+  set("update", S.update ? `<div class="alert news">${icon.info}<div style="flex:1"><b>È disponibile Ponte ${esc(S.update)}</b><div class="help">Questo computer ha la versione ${esc(S.version)}. Ponte si riavvia da solo in pochi secondi; aggiorna anche l'altro computer.</div>
     <div class="acts"><button class="btn small" id="doupdate">Aggiorna e riavvia</button></div></div></div>` : "");
   $("#autosw").classList.toggle("on", S.autostart);
   $("#clipsw").classList.toggle("on", S.clipboard);
