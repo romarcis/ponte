@@ -1,0 +1,80 @@
+package main
+
+import (
+	"strings"
+	"sync"
+	"time"
+)
+
+// Copied text travels to the other computer: each side watches its own
+// clipboard and sends new text; received text is put on the local clipboard.
+
+const maxClipboard = 1 << 20
+
+type clipboard interface {
+	// Get returns the clipboard text; ok is false when it holds no text.
+	Get() (text string, ok bool)
+	Set(text string)
+	Available() bool
+}
+
+var makeClipboard = newClipboard
+
+type clipSync struct {
+	app  *App
+	cb   clipboard
+	mu   sync.Mutex
+	last string
+}
+
+// startClipSync watches the clipboard until stop is closed, calling send with
+// each new text.
+func startClipSync(app *App, cb clipboard, send func([]byte), stop <-chan struct{}) *clipSync {
+	c := &clipSync{app: app, cb: cb}
+	c.last, _ = cb.Get() // what is already there stays local
+	go func() {
+		t := time.NewTicker(400 * time.Millisecond)
+		defer t.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case <-t.C:
+			}
+			if !app.clipboardOn() {
+				continue
+			}
+			text, ok := cb.Get()
+			if !ok || text == "" || len(text) > maxClipboard {
+				continue
+			}
+			c.mu.Lock()
+			changed := text != c.last
+			c.last = text
+			c.mu.Unlock()
+			if changed {
+				send(wbuf{msgClipboard}.u32(uint32(len(text))).raw(text))
+			}
+		}
+	}()
+	return c
+}
+
+func (c *clipSync) received(msg []byte) {
+	r := &rbuf{b: msg[1:]}
+	n := r.u32()
+	if n > maxClipboard {
+		return
+	}
+	text := string(r.take(int(n)))
+	if r.err != nil || !c.app.clipboardOn() {
+		return
+	}
+	c.mu.Lock()
+	c.last = text
+	c.mu.Unlock()
+	c.cb.Set(text)
+}
+
+func toLF(s string) string   { return strings.ReplaceAll(s, "\r\n", "\n") }
+func toCRLF(s string) string { return strings.ReplaceAll(toLF(s), "\n", "\r\n") }

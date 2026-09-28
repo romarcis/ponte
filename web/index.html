@@ -1,0 +1,534 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ponte</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%20256%20256%22%3E%0A%20%20%3Cdefs%3E%0A%20%20%20%20%3ClinearGradient%20id%3D%22g%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%220%22%20stop-color%3D%22%235b5bf7%22/%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%238b5cf6%22/%3E%0A%20%20%20%20%3C/linearGradient%3E%0A%20%20%20%20%3ClinearGradient%20id%3D%22m%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%220%22%20y2%3D%221%22%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23ffffff%22/%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23e6e4ff%22/%3E%0A%20%20%20%20%3C/linearGradient%3E%0A%20%20%3C/defs%3E%0A%20%20%3Crect%20x%3D%228%22%20y%3D%228%22%20width%3D%22240%22%20height%3D%22240%22%20rx%3D%2256%22%20fill%3D%22url%28%23g%29%22/%3E%0A%20%20%3Crect%20x%3D%2278%22%20y%3D%2240%22%20width%3D%22100%22%20height%3D%22176%22%20rx%3D%2250%22%20fill%3D%22url%28%23m%29%22/%3E%0A%20%20%3Cpath%20d%3D%22M78%20104h100%22%20stroke%3D%22%235b5bf7%22%20stroke-width%3D%228%22%20opacity%3D%22.35%22/%3E%0A%20%20%3Cpath%20d%3D%22M128%2040v64%22%20stroke%3D%22%235b5bf7%22%20stroke-width%3D%228%22%20opacity%3D%22.35%22/%3E%0A%20%20%3Crect%20x%3D%22118%22%20y%3D%2262%22%20width%3D%2220%22%20height%3D%2230%22%20rx%3D%2210%22%20fill%3D%22%235b5bf7%22/%3E%0A%3C/svg%3E">
+<style>
+:root{
+  --bg:#f4f5fb; --bg2:#eceefa; --card:#ffffff; --card2:#f7f8fd; --line:#e3e5f2; --text:#171a2c; --muted:#6a6f8c;
+  --accent:#5b5bf7; --accent2:#8b5cf6; --accent-soft:#ecebff; --ok:#16a36a; --ok-soft:#e5f7ef; --warn:#d97706; --warn-soft:#fdf3e2;
+  --err:#dc3d4b; --err-soft:#fdecee; --shadow:0 1px 2px rgba(20,22,50,.06),0 8px 28px rgba(20,22,50,.08);
+  --screen:#1d2140; --screen2:#2b3163;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#0f1120; --bg2:#141731; --card:#181b33; --card2:#1d2140; --line:#2a2f52; --text:#eef0ff; --muted:#9aa0c3;
+  --accent:#7c7cff; --accent2:#a78bfa; --accent-soft:#25285a; --ok:#34d399; --ok-soft:#133329; --warn:#fbbf24; --warn-soft:#3a2d12;
+  --err:#fb7185; --err-soft:#3b1a24; --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px rgba(0,0,0,.35);
+  --screen:#0b0d1c; --screen2:#232858;
+}}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{font:15px/1.5 "Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,"Ubuntu","Cantarell",sans-serif;color:var(--text);
+  background:radial-gradient(1200px 600px at 10% -10%,var(--accent-soft),transparent 60%),radial-gradient(900px 500px at 110% 110%,var(--bg2),transparent 60%),var(--bg);
+  -webkit-font-smoothing:antialiased}
+button{font:inherit;cursor:pointer}
+.app{max-width:980px;margin:0 auto;padding:22px 24px 28px;min-height:100%;display:flex;flex-direction:column;gap:20px}
+
+/* top bar */
+.top{display:flex;align-items:center;gap:14px}
+.logo{display:flex;align-items:center;gap:10px;font-weight:700;font-size:19px;letter-spacing:-.01em}
+.logo svg{width:34px;height:34px;filter:drop-shadow(0 4px 10px rgba(91,91,247,.35))}
+.spacer{flex:1}
+.whoami{display:flex;align-items:center;gap:8px;padding:6px 8px 6px 12px;border-radius:999px;background:var(--card);box-shadow:var(--shadow);color:var(--muted);font-size:13px}
+.whoami b{color:var(--text);font-weight:600}
+.iconbtn{border:0;background:transparent;color:var(--muted);width:30px;height:30px;border-radius:50%;display:grid;place-items:center}
+.iconbtn:hover{background:var(--card2);color:var(--text)}
+.iconbtn svg{width:17px;height:17px}
+.menu{position:relative}
+.pop{position:absolute;right:0;top:40px;width:270px;background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:6px;z-index:20;display:none}
+.pop.open{display:block;animation:pop .14s ease-out}
+.pop button,.pop label{display:flex;align-items:center;gap:10px;width:100%;border:0;background:none;color:var(--text);padding:10px 12px;border-radius:9px;text-align:left;font-size:14px}
+.pop button:hover,.pop label:hover{background:var(--card2)}
+.pop hr{border:0;border-top:1px solid var(--line);margin:4px 6px}
+.pop .danger{color:var(--err)}
+.switch{margin-left:auto;width:36px;height:21px;border-radius:99px;background:var(--line);position:relative;transition:.2s;flex:none}
+.switch::after{content:"";position:absolute;left:3px;top:3px;width:15px;height:15px;border-radius:50%;background:#fff;transition:.2s;box-shadow:0 1px 2px rgba(0,0,0,.25)}
+.switch.on{background:var(--accent)}.switch.on::after{left:18px}
+@keyframes pop{from{opacity:0;transform:translateY(-4px)}}
+
+/* cards */
+.card{background:var(--card);border-radius:20px;box-shadow:var(--shadow);padding:26px}
+h1{font-size:34px;line-height:1.15;letter-spacing:-.025em;margin:0 0 10px}
+h2{font-size:21px;letter-spacing:-.015em;margin:0 0 6px}
+h3{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 12px;font-weight:600}
+p{margin:0}
+.muted{color:var(--muted)}
+.btn{border:0;border-radius:12px;padding:11px 18px;font-weight:600;background:var(--accent);color:#fff;box-shadow:0 6px 16px rgba(91,91,247,.3);transition:transform .1s,box-shadow .2s,background .2s}
+.btn:hover{transform:translateY(-1px);box-shadow:0 8px 20px rgba(91,91,247,.38)}
+.btn:active{transform:none}
+.btn.ghost{background:var(--card2);color:var(--text);box-shadow:none;border:1px solid var(--line)}
+.btn.small{padding:7px 13px;border-radius:10px;font-size:13.5px}
+.btn:disabled{opacity:.5;cursor:default;transform:none}
+.link{border:0;background:none;color:var(--accent);font-weight:600;padding:0}
+
+/* welcome */
+.hero{text-align:center;padding:28px 10px 6px}
+.hero p{font-size:17px}
+.roles{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.role{position:relative;text-align:left;border:1.5px solid transparent;background:var(--card);border-radius:22px;padding:26px;box-shadow:var(--shadow);transition:.18s;color:var(--text);display:flex;flex-direction:column;gap:14px}
+.role:hover{border-color:var(--accent);transform:translateY(-3px)}
+.role .art{height:130px;border-radius:16px;background:linear-gradient(135deg,var(--accent-soft),var(--card2));display:grid;place-items:center}
+.role .art svg{height:96px}
+.role h2{margin:0}
+.role .go{margin-top:auto;display:flex;align-items:center;gap:6px;color:var(--accent);font-weight:600}
+.foot{text-align:center;font-size:13px;color:var(--muted);margin-top:auto;padding-top:6px}
+
+/* layout of the main views */
+.grid{display:grid;grid-template-columns:1.15fr 1fr;gap:20px;align-items:start}
+.stack{display:flex;flex-direction:column;gap:20px}
+
+/* arrangement */
+.arr{position:relative;display:grid;grid-template-columns:1fr 180px 1fr;grid-template-rows:96px 140px 96px;gap:12px;place-items:center;margin:4px 0 14px}
+.mon{width:170px;display:flex;flex-direction:column;align-items:center;gap:0;transition:.3s}
+.mon .scr{width:170px;height:106px;border-radius:10px;background:linear-gradient(160deg,var(--screen2),var(--screen));border:5px solid #0a0c18;position:relative;overflow:hidden;display:grid;place-items:center;color:#c9ccff;font-size:12px;font-weight:600;text-align:center;padding:6px}
+.mon .scr::before{content:"";position:absolute;inset:0;background:radial-gradient(120px 60px at 30% 0%,rgba(255,255,255,.14),transparent)}
+.mon .stand{width:38px;height:12px;background:#9aa0c3;opacity:.5;clip-path:polygon(20% 0,80% 0,100% 100%,0 100%)}
+.mon .foot2{width:70px;height:4px;border-radius:3px;background:#9aa0c3;opacity:.5}
+.mon.me .scr{background:linear-gradient(160deg,var(--accent),var(--accent2));color:#fff}
+.mon.me .scr span,.mon .scr span{position:relative}
+.mon.small{transform:scale(.8)}
+.arr .mon.small[style*="1/2"],.arr .mon.small[style*="3/2"]{transform:scale(.62)}
+.mon.live .scr{box-shadow:0 0 0 3px var(--ok),0 0 30px rgba(22,163,106,.55)}
+.mon.dim{opacity:.55}
+.slot{width:140px;height:84px;border-radius:12px;border:2px dashed var(--line);display:grid;place-items:center;color:var(--muted);font-size:12.5px;background:transparent;transition:.15s;padding:8px;text-align:center}
+.slot:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+.cursor{position:absolute;width:16px;height:16px;left:50%;top:50%;animation:wander 3.2s ease-in-out infinite}
+@keyframes wander{0%{transform:translate(-30px,-8px)}35%{transform:translate(20px,10px)}70%{transform:translate(-6px,18px)}100%{transform:translate(-30px,-8px)}}
+.arrow{position:absolute;color:var(--accent);opacity:.9}
+
+/* status */
+.status{display:flex;align-items:center;gap:14px}
+.dot{width:12px;height:12px;border-radius:50%;background:var(--muted);flex:none;position:relative}
+.dot.wait{background:var(--warn)}.dot.ok{background:var(--ok)}.dot.live{background:var(--ok)}.dot.err{background:var(--err)}
+.dot.wait::after,.dot.live::after{content:"";position:absolute;inset:-6px;border-radius:50%;border:2px solid currentColor;animation:ping 1.6s ease-out infinite}
+.dot.wait{color:var(--warn)}.dot.live{color:var(--ok)}
+@keyframes ping{from{transform:scale(.5);opacity:.9}to{transform:scale(1.4);opacity:0}}
+.code{display:flex;gap:8px;margin:18px 0 6px}
+.code span{width:42px;height:56px;border-radius:12px;background:var(--card2);border:1px solid var(--line);display:grid;place-items:center;font-size:30px;font-weight:700;font-variant-numeric:tabular-nums}
+.code span:nth-child(4){margin-left:10px}
+.steps{margin:16px 0 0;padding:0;list-style:none;counter-reset:s;display:flex;flex-direction:column;gap:9px}
+.steps li{counter-increment:s;display:flex;gap:10px;align-items:flex-start;color:var(--muted)}
+.steps li::before{content:counter(s);flex:none;width:22px;height:22px;border-radius:50%;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;font-size:12px;font-weight:700;margin-top:1px}
+.steps b{color:var(--text)}
+kbd{display:inline-block;font-family:inherit;font-weight:600;font-size:12.5px;line-height:1;padding:5px 8px;border-radius:7px;background:var(--card2);border:1px solid var(--line);border-bottom-width:3px;color:var(--text)}
+.tip{display:flex;gap:12px;align-items:flex-start;background:var(--card2);border-radius:14px;padding:14px;margin-top:16px;font-size:14px;color:var(--muted)}
+.tip svg{flex:none;width:20px;height:20px;color:var(--accent);margin-top:1px}
+.big{font-size:17px}
+
+/* lists */
+.list{display:flex;flex-direction:column;gap:10px}
+.item{display:flex;align-items:center;gap:14px;padding:12px 14px;border-radius:14px;background:var(--card2);border:1px solid transparent;transition:.15s}
+.item.click{cursor:pointer}
+.item.click:hover{border-color:var(--accent)}
+.item .ic{width:40px;height:40px;border-radius:11px;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;flex:none}
+.item .ic svg{width:22px;height:22px}
+.item .tx{flex:1;min-width:0}
+.item .tx b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item .tx small{color:var(--muted)}
+.badge{font-size:11.5px;font-weight:600;padding:3px 8px;border-radius:99px;background:var(--ok-soft);color:var(--ok)}
+.empty{color:var(--muted);font-size:14px;padding:6px 2px}
+
+/* radar */
+.radar{position:relative;width:190px;height:190px;margin:8px auto 18px}
+.radar i{position:absolute;inset:0;border-radius:50%;border:2px solid var(--accent);opacity:0;animation:ring 3s ease-out infinite}
+.radar i:nth-child(2){animation-delay:1s}.radar i:nth-child(3){animation-delay:2s}
+.radar .core{position:absolute;inset:62px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent2));display:grid;place-items:center;color:#fff;box-shadow:0 10px 30px rgba(91,91,247,.45)}
+.radar .core svg{width:34px;height:34px}
+@keyframes ring{from{transform:scale(.35);opacity:.8}to{transform:scale(1);opacity:0}}
+.center{text-align:center}
+.hero-state{display:flex;flex-direction:column;align-items:center;text-align:center;gap:8px;padding:10px 0}
+.bigicon{width:92px;height:92px;border-radius:28px;display:grid;place-items:center;margin-bottom:10px}
+.bigicon svg{width:46px;height:46px}
+.bigicon.ok{background:var(--ok-soft);color:var(--ok)}
+.bigicon.live{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;box-shadow:0 12px 34px rgba(91,91,247,.45);animation:breathe 2.4s ease-in-out infinite}
+@keyframes breathe{50%{transform:scale(1.05)}}
+.spin{width:40px;height:40px;border-radius:50%;border:4px solid var(--accent-soft);border-top-color:var(--accent);animation:spin .9s linear infinite;margin:10px auto}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* alert */
+.alert{display:flex;gap:14px;border-radius:16px;padding:16px 18px;background:var(--err-soft);color:var(--text)}
+.alert svg{flex:none;width:22px;height:22px;color:var(--err);margin-top:2px}
+.alert b{display:block;margin-bottom:2px}
+.alert .help{color:var(--muted);font-size:14px;white-space:pre-wrap}
+.alert pre{white-space:pre-wrap;word-break:break-all;background:var(--card);border-radius:10px;padding:10px;font-size:12px;margin:10px 0 0;color:var(--text)}
+.alert .acts{display:flex;gap:8px;margin-top:12px}
+
+/* modal */
+.veil{position:fixed;inset:0;background:rgba(10,12,30,.45);backdrop-filter:blur(6px);display:none;place-items:center;z-index:50;padding:20px}
+.veil.open{display:grid;animation:fade .15s}
+@keyframes fade{from{opacity:0}}
+.modal{background:var(--card);border-radius:22px;padding:28px;width:min(440px,100%);box-shadow:0 20px 60px rgba(0,0,0,.3);animation:pop .18s ease-out}
+.digits{display:flex;gap:8px;justify-content:center;margin:22px 0}
+.digits input{width:48px;height:60px;border-radius:12px;border:1.5px solid var(--line);background:var(--card2);color:var(--text);text-align:center;font-size:28px;font-weight:700;outline:none;transition:.15s}
+.digits input:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-soft)}
+.digits input:nth-child(4){margin-left:10px}
+.field{width:100%;border-radius:12px;border:1.5px solid var(--line);background:var(--card2);color:var(--text);padding:12px 14px;font:inherit;outline:none;margin:16px 0}
+.field:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-soft)}
+.row{display:flex;gap:10px;justify-content:flex-end}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(30px);background:var(--text);color:var(--bg);padding:10px 16px;border-radius:12px;font-size:14px;opacity:0;transition:.25s;pointer-events:none;z-index:60}
+.toast.show{opacity:1;transform:translateX(-50%)}
+[hidden]{display:none!important}
+@media (max-width:760px){.roles,.grid{grid-template-columns:1fr}.arr{transform:scale(.85)}h1{font-size:28px}}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="top">
+    <div class="logo">
+      <svg viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="lg1" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#5b5bf7"/><stop offset="1" stop-color="#8b5cf6"/>
+    </linearGradient>
+    <linearGradient id="lg2" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#e6e4ff"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="56" fill="url(#lg1)"/>
+  <rect x="78" y="40" width="100" height="176" rx="50" fill="url(#lg2)"/>
+  <path d="M78 104h100" stroke="#5b5bf7" stroke-width="8" opacity=".35"/>
+  <path d="M128 40v64" stroke="#5b5bf7" stroke-width="8" opacity=".35"/>
+  <rect x="118" y="62" width="20" height="30" rx="10" fill="#5b5bf7"/>
+</svg>
+      Ponte
+    </div>
+    <div class="spacer"></div>
+    <div class="whoami" title="Il nome con cui gli altri computer vedono questo">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>
+      <b id="myname">…</b>
+      <button class="iconbtn" id="rename" title="Cambia nome"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20h4L19 9l-4-4L4 16v4z"/></svg></button>
+    </div>
+    <div class="menu">
+      <button class="iconbtn" id="menubtn" title="Impostazioni" style="background:var(--card);box-shadow:var(--shadow);width:36px;height:36px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg></button>
+      <div class="pop" id="pop">
+        <label id="autostart"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v9M6.3 7.3a8 8 0 1 0 11.4 0"/></svg>Avvia con il computer<span class="switch" id="autosw"></span></label>
+        <label id="clipboard"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9 4h6v3H9zM9 12h6M9 16h4"/></svg>Condividi il testo copiato<span class="switch" id="clipsw"></span></label>
+        <button id="changerole"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 7h11l-3-3M17 17H6l3 3"/></svg>Cambia ruolo</button>
+        <hr>
+        <button id="quit" class="danger"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10"/></svg>Esci da Ponte</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="alert"></div>
+
+  <!-- choose a role -->
+  <section id="v-welcome" hidden>
+    <div class="hero">
+      <h1>Un mouse, una tastiera,<br>due computer.</h1>
+      <p class="muted">Sposta il puntatore oltre il bordo dello schermo e continua a lavorare sull'altro computer.</p>
+    </div>
+    <div class="roles" style="margin-top:26px">
+      <button class="role" data-role="share">
+        <div class="art"><svg viewBox="0 0 160 100" fill="none"><rect x="8" y="58" width="96" height="30" rx="7" fill="var(--card)" stroke="var(--accent)" stroke-width="2.5"/><g fill="var(--accent)" opacity=".75"><rect x="17" y="65" width="10" height="7" rx="2"/><rect x="31" y="65" width="10" height="7" rx="2"/><rect x="45" y="65" width="10" height="7" rx="2"/><rect x="59" y="65" width="10" height="7" rx="2"/><rect x="73" y="65" width="10" height="7" rx="2"/><rect x="87" y="65" width="9" height="7" rx="2"/><rect x="31" y="76" width="52" height="6" rx="2"/></g><rect x="118" y="46" width="30" height="44" rx="15" fill="var(--card)" stroke="var(--accent)" stroke-width="2.5"/><path d="M133 46v14" stroke="var(--accent)" stroke-width="2.5"/><path d="M60 40c10-22 40-30 62-18" stroke="var(--accent2)" stroke-width="2.5" stroke-dasharray="5 6" stroke-linecap="round"/><path d="M116 14l8 8-11 3" stroke="var(--accent2)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <div><h2>Questo computer ha mouse e tastiera</h2><p class="muted">Li condivide con l'altro computer, che potrai controllare da qui.</p></div>
+        <span class="go">Condividi <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+      </button>
+      <button class="role" data-role="receive">
+        <div class="art"><svg viewBox="0 0 160 100" fill="none"><rect x="36" y="10" width="88" height="58" rx="7" fill="var(--card)" stroke="var(--accent)" stroke-width="2.5"/><path d="M68 84h24M80 68v16" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round"/><path d="M74 26l0 26 7-7 5 11 5-2-5-11 10 0z" fill="var(--accent2)"/><circle cx="18" cy="40" r="3" fill="var(--accent2)"/><circle cx="142" cy="40" r="3" fill="var(--accent2)" opacity=".5"/><path d="M10 28c-5 8-5 16 0 24M150 28c5 8 5 16 0 24" stroke="var(--accent2)" stroke-width="2.5" stroke-linecap="round" opacity=".6"/></svg></div>
+        <div><h2>Questo computer verrà controllato</h2><p class="muted">Usa il mouse e la tastiera dell'altro computer, senza fili in più.</p></div>
+        <span class="go">Ricevi <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+      </button>
+    </div>
+    <p class="foot" style="margin-top:26px">Apri Ponte su entrambi i computer, collegati alla stessa rete.</p>
+  </section>
+
+  <!-- sharing -->
+  <section id="v-share" hidden>
+    <div class="grid">
+      <div class="card">
+        <h3>Disposizione degli schermi</h3>
+        <div class="arr" id="arr"></div>
+        <p class="muted center" style="font-size:13.5px" id="arrhint">Tocca un riquadro per indicare dove si trova l'altro computer.</p>
+      </div>
+      <div class="stack">
+        <div class="card" id="sharestatus"></div>
+        <div class="card" id="clientsCard" hidden>
+          <h3>Computer abbinati</h3>
+          <div class="list" id="clients"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- receiving -->
+  <section id="v-recv" hidden>
+    <div class="grid" id="recvgrid">
+      <div class="card" id="recvstatus"></div>
+      <div class="stack">
+        <div class="card">
+          <h3>Computer nella rete</h3>
+          <div class="list" id="found"></div>
+          <p style="margin-top:14px;font-size:14px" class="muted">Non lo trovi? <button class="link" id="manual">Inserisci l'indirizzo</button></p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <p class="foot" id="bgnote" hidden></p>
+</div>
+
+<!-- pairing code -->
+<div class="veil" id="codeveil">
+  <div class="modal">
+    <h2>Collega a <span id="codename"></span></h2>
+    <p class="muted">Inserisci il codice di 6 cifre che vedi sull'altro computer.</p>
+    <div class="digits" id="digits"></div>
+    <div class="row"><button class="btn ghost" data-close>Annulla</button><button class="btn" id="codego" disabled>Collega</button></div>
+  </div>
+</div>
+<!-- manual address -->
+<div class="veil" id="addrveil">
+  <div class="modal">
+    <h2>Inserisci l'indirizzo</h2>
+    <p class="muted">Lo trovi nelle impostazioni di rete dell'altro computer, ad esempio 192.168.1.20.</p>
+    <input class="field" id="addr" placeholder="192.168.1.20" autocomplete="off">
+    <div class="row"><button class="btn ghost" data-close>Annulla</button><button class="btn" id="addrgo">Avanti</button></div>
+  </div>
+</div>
+<!-- rename -->
+<div class="veil" id="nameveil">
+  <div class="modal">
+    <h2>Nome di questo computer</h2>
+    <p class="muted">È il nome che vedrai sull'altro computer.</p>
+    <input class="field" id="nameinput" maxlength="60" autocomplete="off">
+    <div class="row"><button class="btn ghost" data-close>Annulla</button><button class="btn" id="namego">Salva</button></div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const TOKEN = "__TOKEN__";
+const $ = s => document.querySelector(s);
+let S = null, lastKey = {}, pendingConnect = null;
+
+const OSNAME = {windows:"Windows", linux:"Linux", darwin:"macOS"};
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const icon = {
+  pc: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>',
+  laptop: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="5" width="16" height="11" rx="2"/><path d="M2 19h20"/></svg>',
+  check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+  mouse: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="3" width="12" height="18" rx="6"/><path d="M12 7v4"/></svg>',
+  info: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>',
+  warn: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l10 18H2L12 3z"/><path d="M12 10v5M12 18h.01"/></svg>',
+  wifi: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M2 9a15 15 0 0 1 20 0M5.5 12.5a10 10 0 0 1 13 0M9 16a5 5 0 0 1 6 0"/><circle cx="12" cy="19.5" r="1" fill="currentColor"/></svg>',
+  clip: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9 4h6v3H9zM9 12h6M9 16h4"/></svg>',
+  trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>',
+  cursor: '<svg class="cursor" viewBox="0 0 24 24"><path d="M4 2l0 18 5-5 4 8 3-1.5-4-8 7 0z" fill="#fff" stroke="#111" stroke-width="1.2" stroke-linejoin="round"/></svg>',
+};
+const osIcon = os => os === "darwin" ? icon.laptop : icon.pc;
+const osLabel = os => OSNAME[os] || "";
+
+async function api(path, body) {
+  const r = await fetch(path, {method: body ? "POST" : "GET", headers: {"X-Ponte-Token": TOKEN, "Content-Type": "application/json"}, body: body ? JSON.stringify(body) : undefined});
+  return r.json();
+}
+function toast(msg) { const t = $("#toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), 2400); }
+function set(id, html, key) { // re-render only when the content changes
+  if (lastKey[id] === (key ?? html)) return;
+  lastKey[id] = key ?? html; document.getElementById(id).innerHTML = html;
+}
+
+async function refresh() {
+  try { S = await api("/api/state"); render(); } catch (e) { offline(); }
+}
+function offline() {
+  set("alert", `<div class="alert">${icon.warn}<div><b>Ponte non è in esecuzione</b><div class="help">Avvia di nuovo Ponte per riaprire questa finestra.</div></div></div>`);
+}
+
+function render() {
+  $("#myname").textContent = S.name;
+  $("#autosw").classList.toggle("on", S.autostart);
+  $("#clipsw").classList.toggle("on", S.clipboard);
+  $("#changerole").hidden = !S.role;
+  $("#v-welcome").hidden = !!S.role;
+  $("#v-share").hidden = S.role !== "share";
+  $("#v-recv").hidden = S.role !== "receive";
+  $("#bgnote").hidden = !S.role;
+  $("#bgnote").textContent = S.os === "windows"
+    ? "Puoi chiudere questa finestra: Ponte resta attivo nell'area di notifica, vicino all'orologio."
+    : "Puoi chiudere questa finestra: Ponte continua a funzionare. Per riaprirla avvia di nuovo Ponte.";
+  renderAlert();
+  if (S.role === "share") renderShare();
+  if (S.role === "receive") renderRecv();
+}
+
+function renderAlert() {
+  if (!S.error) return set("alert", "");
+  const cmd = (S.errorHelp || "").split("\n\n");
+  const help = esc(cmd[0]) + (cmd.length > 1 ? `<pre>${esc(cmd.slice(1).join("\n\n"))}</pre>` : "");
+  set("alert", `<div class="alert">${icon.warn}<div style="flex:1"><b>${esc(S.error)}</b><div class="help">${help}</div>
+    <div class="acts">${S.canFix ? '<button class="btn small" id="fix">Risolvi</button>' : ""}${S.state === "error" ? '<button class="btn small ghost" id="retry">Riprova</button>' : ""}</div></div></div>`);
+}
+
+/* ---------- share ---------- */
+const EDGE_TXT = {right: "destro", left: "sinistro", top: "superiore", bottom: "inferiore"};
+function renderShare() {
+  const other = S.peer || "Altro computer";
+  const live = S.state === "active";
+  const pos = {top: "grid-area:1/2", left: "grid-area:2/1", right: "grid-area:2/3", bottom: "grid-area:3/2"};
+  let h = `<div class="mon me ${live ? "dim" : ""}" style="grid-area:2/2"><div class="scr"><span>${esc(S.name)}<br><small style="opacity:.8;font-weight:500">questo computer</small></span></div><div class="stand"></div><div class="foot2"></div></div>`;
+  for (const e of ["top", "left", "right", "bottom"]) {
+    if (e === S.edge) h += `<div class="mon small ${live ? "live" : ""}" style="${pos[e]}"><div class="scr"><span>${esc(other)}</span>${live ? icon.cursor : ""}</div><div class="stand"></div><div class="foot2"></div></div>`;
+    else h += `<button class="slot" style="${pos[e]}" data-edge="${e}">Metti qui</button>`;
+  }
+  set("arr", h);
+  $("#arrhint").textContent = S.edgeSwitch
+    ? `Il puntatore passa all'altro computer dal bordo ${EDGE_TXT[S.edge]} dello schermo.`
+    : "Usa il tasto Bloc Scorr per passare da un computer all'altro.";
+
+  let st;
+  if (S.state === "waiting") {
+    const c = S.code || "";
+    st = `<div class="status"><span class="dot wait"></span><div><h2>In attesa dell'altro computer</h2></div></div>
+      <div class="code">${[...c].map(d => `<span>${d}</span>`).join("")}</div>
+      <p class="muted" style="font-size:13.5px">Codice di abbinamento</p>
+      <ol class="steps">
+        <li><span>Apri <b>Ponte</b> sull'altro computer</span></li>
+        <li><span>Scegli <b>Questo computer verrà controllato</b></span></li>
+        <li><span>Seleziona <b>${esc(S.name)}</b> e inserisci il codice</span></li>
+      </ol>
+      ${S.clients.length ? `<div class="tip">${icon.info}<span>I computer già abbinati si collegano da soli, senza codice.</span></div>` : ""}`;
+  } else if (S.state === "connected" || S.state === "active") {
+    st = `<div class="status"><span class="dot ${live ? "live" : "ok"}"></span><div><h2>${live ? "Stai usando " + esc(other) : "Collegato a " + esc(other)}</h2>
+        <p class="muted">${live ? "Mouse e tastiera ora controllano l'altro computer." : "Tutto pronto."}</p></div></div>
+      <div class="tip">${icon.mouse}<span>${S.edgeSwitch
+        ? `Porta il puntatore oltre il bordo <b>${EDGE_TXT[S.edge]}</b> dello schermo per passare a ${esc(other)}, e torna indietro dal lato opposto.`
+        : `Premi <kbd>Bloc Scorr</kbd> per passare a ${esc(other)}.`}</span></div>
+      <div class="tip">${icon.info}<span>Puoi sempre tornare qui premendo <kbd>Bloc Scorr</kbd> oppure <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>Esc</kbd>.</span></div>${clipTip()}`;
+  } else if (S.state === "error") {
+    st = `<div class="status"><span class="dot err"></span><div><h2>Condivisione non attiva</h2><p class="muted">Risolvi il problema indicato sopra.</p></div></div>`;
+  } else {
+    st = `<div class="spin"></div>`;
+  }
+  set("sharestatus", st);
+
+  $("#clientsCard").hidden = !S.clients.length;
+  set("clients", S.clients.map(c => `<div class="item"><div class="ic">${osIcon(c.os)}</div><div class="tx"><b>${esc(c.name)}</b><small>${osLabel(c.os)}</small></div>
+    <button class="iconbtn" title="Dimentica" data-forget="${esc(c.id)}">${icon.trash}</button></div>`).join(""));
+}
+
+function clipTip() {
+  if (!S.clipboard) return "";
+  const txt = S.clipboardOK
+    ? "Il testo che copi su un computer si incolla anche sull'altro."
+    : "Per condividere il testo copiato installa <b>xclip</b> (X11) o <b>wl-clipboard</b> (Wayland) su questo computer.";
+  return `<div class="tip" style="text-align:left">${icon.clip}<span>${txt}</span></div>`;
+}
+
+/* ---------- receive ---------- */
+function renderRecv() {
+  let h;
+  const who = esc(S.peer);
+  if (S.state === "connected") {
+    h = `<div class="hero-state"><div class="bigicon ok">${icon.check}</div><h2>Collegato a ${who}</h2>
+      <p class="muted big">Muovi il mouse di ${who} verso questo schermo per iniziare.</p>
+      <div class="tip" style="text-align:left">${icon.info}<span>Ponte si ricollega da solo a ${who} ogni volta che accendi i computer.</span></div>${clipTip()}</div>`;
+  } else if (S.state === "active") {
+    h = `<div class="hero-state"><div class="bigicon live">${icon.mouse}</div><h2>${who} sta usando questo computer</h2>
+      <p class="muted big">Premi <kbd>Bloc Scorr</kbd> oppure <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>Esc</kbd> su ${who} per tornare indietro.</p></div>`;
+  } else if (S.state === "connecting") {
+    h = `<div class="hero-state"><div class="spin"></div><h2>Collegamento in corso…</h2></div>`;
+  } else if (S.state === "error") {
+    h = `<div class="hero-state"><div class="bigicon" style="background:var(--err-soft);color:var(--err)">${icon.warn}</div><h2>Ricezione non attiva</h2><p class="muted">Risolvi il problema indicato sopra.</p></div>`;
+  } else {
+    h = `<div class="hero-state"><div class="radar"><i></i><i></i><i></i><div class="core">${icon.wifi}</div></div>
+      <h2>Cerco computer da cui farsi controllare</h2>
+      <p class="muted">Sull'altro computer apri Ponte e scegli <b>Questo computer ha mouse e tastiera</b>.</p></div>`;
+  }
+  set("recvstatus", h);
+
+  const known = new Set(S.found.map(f => f.id));
+  const rows = S.found.map(f => {
+    const cur = f.id === S.target && (S.state === "connected" || S.state === "active");
+    return `<div class="item click" data-connect="${esc(f.id)}" data-addr="${esc(f.addr)}" data-name="${esc(f.name)}" data-paired="${f.paired ? 1 : ""}">
+      <div class="ic">${osIcon(f.os)}</div><div class="tx"><b>${esc(f.name)}</b><small>${osLabel(f.os)}${f.os ? " · " : ""}${esc(f.addr.replace(/:\d+$/, ""))}</small></div>
+      ${cur ? '<span class="badge">Collegato</span>' : f.paired ? '<span class="badge" style="background:var(--accent-soft);color:var(--accent)">Abbinato</span>' : '<button class="btn small">Collega</button>'}</div>`;
+  });
+  for (const s of S.servers) if (!known.has(s.id)) rows.push(`<div class="item"><div class="ic">${osIcon(s.os)}</div><div class="tx"><b>${esc(s.name)}</b><small>Abbinato · non raggiungibile</small></div>
+    <button class="iconbtn" title="Dimentica" data-forget="${esc(s.id)}">${icon.trash}</button></div>`);
+  set("found", rows.join("") || `<p class="empty">Nessun computer trovato per ora…</p>`);
+}
+
+/* ---------- actions ---------- */
+document.addEventListener("click", async e => {
+  const t = e.target.closest("[data-connect]") || e.target.closest("button, label");
+  if (!t) { $("#pop").classList.remove("open"); return; }
+  if (t.id !== "menubtn" && !t.closest("#pop")) $("#pop").classList.remove("open");
+  if (t.dataset.role) { S = await api("/api/role", {role: t.dataset.role}); render(); }
+  else if (t.dataset.edge) { S = await api("/api/edge", {edge: t.dataset.edge}); render(); }
+  else if (t.dataset.forget) {
+    if (confirm("Dimenticare questo computer? Per ricollegarlo servirà di nuovo il codice.")) { S = await api("/api/forget", {id: t.dataset.forget}); render(); }
+  }
+  else if (t.dataset.connect !== undefined) {
+    const f = {id: t.dataset.connect, addr: t.dataset.addr, name: t.dataset.name};
+    if (t.dataset.paired) { S = await api("/api/connect", {id: f.id, addr: f.addr}); render(); }
+    else openCode(f);
+  }
+  else if (t.id === "menubtn") $("#pop").classList.toggle("open");
+  else if (t.id === "autostart") { e.preventDefault(); S = await api("/api/autostart", {on: S.autostart ? "0" : "1"}); render(); toast(S.autostart ? "Ponte partirà insieme al computer" : "Avvio automatico disattivato"); }
+  else if (t.id === "clipboard") { e.preventDefault(); S = await api("/api/clipboard", {on: S.clipboard ? "0" : "1"}); render(); toast(S.clipboard ? "Il testo copiato passa da un computer all'altro" : "Condivisione del testo copiato disattivata"); }
+  else if (t.id === "changerole") { S = await api("/api/role", {role: ""}); render(); }
+  else if (t.id === "quit") { await api("/api/quit", {}); document.body.innerHTML = '<div class="app"><div class="card center" style="margin-top:80px"><h2>Ponte è stato chiuso</h2><p class="muted">Il mouse e la tastiera tornano a funzionare solo su ciascun computer.</p></div></div>'; clearInterval(timer); }
+  else if (t.id === "retry") { S = await api("/api/role", {role: S.role}); render(); }
+  else if (t.id === "fix") { t.disabled = true; t.textContent = "Attendi…"; const r = await api("/api/fix", {}); if (r.error) toast("Operazione non riuscita"); else toast("Fatto!"); refresh(); }
+  else if (t.id === "manual") { $("#addr").value = ""; openVeil("addrveil"); setTimeout(() => $("#addr").focus(), 50); }
+  else if (t.id === "addrgo") submitAddr();
+  else if (t.id === "rename") { $("#nameinput").value = S.name; openVeil("nameveil"); setTimeout(() => $("#nameinput").select(), 50); }
+  else if (t.id === "namego") submitName();
+  else if (t.id === "codego") submitCode();
+  else if (t.dataset.close !== undefined) closeVeils();
+});
+
+function openVeil(id) { $("#" + id).classList.add("open"); }
+function closeVeils() { document.querySelectorAll(".veil").forEach(v => v.classList.remove("open")); }
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape") closeVeils();
+  if (e.key === "Enter" && $("#addrveil").classList.contains("open")) submitAddr();
+  if (e.key === "Enter" && $("#nameveil").classList.contains("open")) submitName();
+});
+
+function openCode(f) {
+  pendingConnect = f;
+  $("#codename").textContent = f.name;
+  const box = $("#digits");
+  box.innerHTML = Array.from({length: 6}, () => '<input inputmode="numeric" maxlength="1">').join("");
+  const ins = [...box.querySelectorAll("input")];
+  const update = () => { $("#codego").disabled = ins.some(i => !i.value); };
+  ins.forEach((inp, i) => {
+    inp.addEventListener("input", () => { inp.value = inp.value.replace(/\D/g, "").slice(-1); if (inp.value && ins[i + 1]) ins[i + 1].focus(); update(); if (!ins.some(x => !x.value)) submitCode(); });
+    inp.addEventListener("keydown", e => { if (e.key === "Backspace" && !inp.value && ins[i - 1]) ins[i - 1].focus(); });
+    inp.addEventListener("paste", e => { e.preventDefault(); const d = (e.clipboardData.getData("text").match(/\d/g) || []).slice(0, 6); d.forEach((v, j) => ins[j] && (ins[j].value = v)); update(); if (d.length === 6) submitCode(); else ins[Math.min(d.length, 5)].focus(); });
+  });
+  update();
+  openVeil("codeveil");
+  setTimeout(() => ins[0].focus(), 50);
+}
+async function submitCode() {
+  const code = [...$("#digits").querySelectorAll("input")].map(i => i.value).join("");
+  if (code.length !== 6 || !pendingConnect) return;
+  closeVeils();
+  S = await api("/api/connect", {id: pendingConnect.id, addr: pendingConnect.addr, code});
+  pendingConnect = null; render();
+}
+function submitAddr() {
+  let a = $("#addr").value.trim();
+  if (!a) return;
+  if (!/:\d+$/.test(a)) a += ":24800";
+  closeVeils();
+  openCode({id: "", addr: a, name: $("#addr").value.trim()});
+}
+async function submitName() {
+  const n = $("#nameinput").value.trim();
+  if (!n) return;
+  closeVeils();
+  S = await api("/api/name", {name: n}); render(); toast("Nome aggiornato");
+}
+
+refresh();
+const timer = setInterval(refresh, 700);
+</script>
+</body>
+</html>
