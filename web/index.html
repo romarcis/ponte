@@ -322,6 +322,8 @@ kbd{display:inline-block;font-family:inherit;font-weight:600;font-size:12.5px;li
 <div class="toast" id="toast"></div>
 
 <script>
+let picking = false; // the color window is open
+
 const TOKEN = "__TOKEN__";
 const $ = s => document.querySelector(s);
 let S = null, lastKey = {}, pendingConnect = null;
@@ -376,7 +378,9 @@ function render() {
   for (const [k, v] of [["--accent", S.color], ["--accent2", S.color], ["--accent-soft", S.color && `color-mix(in srgb,${S.color} 16%,var(--card))`], ["--logo", S.color], ["--logo2", S.color]]) v ? st.setProperty(k, v) : st.removeProperty(k);
   document.querySelectorAll("#colors .sel").forEach(b => b.classList.remove("sel"));
   (preset || $("#colors label")).classList.add("sel");
-  if (S.color) $("#colorpick").value = S.color;
+  // Not while the color window is open: the refresh put back the old color
+  // and the one chosen could not be confirmed.
+  if (S.color && !picking) $("#colorpick").value = S.color;
   $("#ripple").hidden = !S.role || S.os !== "windows";
   $("#changerole").hidden = !S.role;
   $("#v-welcome").hidden = !!S.role;
@@ -489,8 +493,9 @@ function renderRecv() {
 }
 
 /* ---------- actions ---------- */
+document.addEventListener("click", e => { if (e.target.id === "colorpick") picking = true; }, true);
 document.addEventListener("change", async e => {
-  if (e.target.id === "colorpick") { S = await api("/api/color", {color: e.target.value}); render(); }
+  if (e.target.id === "colorpick") { picking = false; S = await api("/api/color", {color: e.target.value}); render(); }
 });
 document.addEventListener("click", async e => {
   const t = e.target.closest("[data-connect]") || e.target.closest("button, label");
