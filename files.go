@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -57,7 +56,6 @@ func sendFiles(paths []string, send func([]byte)) {
 		})
 		if err == errTooBig {
 			logf("file copiati non inviati: più di %d MB", maxFiles>>20)
-			notify("File non inviati all'altro computer", fmt.Sprintf("Ponte invia al massimo %d MB per volta: questi file restano solo qui.", maxFiles>>20))
 			return
 		}
 	}
@@ -167,7 +165,6 @@ func (c *clipSync) receivedFiles(msg []byte) {
 		}
 		c.cb.(fileClipboard).SetFiles(paths)
 		logf("ricevuti %d file e cartelle (%.1f MB), pronti da incollare", len(paths), float64(in.total)/(1<<20))
-		notify("File copiati dall'altro computer", "Sono pronti: incollali qui con Ctrl+V.")
 	}
 }
 
