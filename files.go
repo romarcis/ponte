@@ -8,9 +8,9 @@ import (
 	"strings"
 )
 
-// Copied files travel like copied text: files and folders copied on one
-// computer are sent right away, saved in a temporary folder on the other and
-// put on its clipboard, ready to paste.
+// Files and folders copied on one computer are sent when they are pasted on
+// another: saved there in a temporary folder, put on its clipboard and
+// pasted.
 
 const (
 	maxFiles  = 200 << 20 // bytes per copy; bigger copies stay local
@@ -20,7 +20,8 @@ const (
 // fileClipboard is a clipboard that can also hold files (Windows).
 type fileClipboard interface {
 	// Files returns the files on the clipboard; changed is false when the
-	// clipboard did not change since the last call.
+	// clipboard did not change since the last call (paths is empty when it
+	// changed to something else).
 	Files() (paths []string, changed bool)
 	SetFiles(paths []string)
 }
@@ -56,6 +57,7 @@ func sendFiles(paths []string, send func([]byte)) {
 		})
 		if err == errTooBig {
 			logf("file copiati non inviati: più di %d MB", maxFiles>>20)
+			send(wbuf{msgFileEnd}.u16(0))
 			return
 		}
 	}
@@ -87,6 +89,29 @@ func sendFiles(paths []string, send func([]byte)) {
 		end = end.str(filepath.Base(p))
 	}
 	send(end)
+}
+
+// filesSize adds up the size of paths, with what they contain; errTooBig
+// past maxFiles.
+func filesSize(paths []string) (int64, error) {
+	var total int64
+	for _, p := range paths {
+		err := filepath.WalkDir(p, func(path string, d fs.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return nil
+			}
+			if info, err := d.Info(); err == nil && info.Mode().IsRegular() {
+				if total += info.Size(); total > maxFiles {
+					return errTooBig
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			return total, err
+		}
+	}
+	return total, nil
 }
 
 func b2u8(b bool) uint8 {
@@ -167,10 +192,12 @@ func (c *clipSync) receivedFiles(in *inbox, msg []byte) {
 			paths = append(paths, filepath.Join(in.dir, name))
 		}
 		if !in.ok || len(paths) == 0 {
+			c.filesDone(in.from, false)
 			return
 		}
 		c.cb.(fileClipboard).SetFiles(paths)
-		logf("ricevuti %d file e cartelle (%.1f MB), pronti da incollare", len(paths), float64(in.total)/(1<<20))
+		logf("ricevuti %d file e cartelle (%.1f MB)", len(paths), float64(in.total)/(1<<20))
+		c.filesDone(in.from, true)
 	}
 }
 

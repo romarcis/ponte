@@ -20,9 +20,14 @@ const (
 	// evMotion: the physical mouse moved while not grabbed. A computer
 	// being controlled from another one takes its mouse back on it.
 	evMotion = 6
+	// evPaste: Ctrl+V pressed here while files copied on another computer
+	// are on offer. The capture held the V back; the files come first.
+	evPaste = 7
 )
 
 const keyScrollLock = 70 // hotkey: jump to the next computer
+
+const keyV = 47
 
 const (
 	keyEsc       = 1
@@ -48,6 +53,13 @@ type inputCapture interface {
 	// SetGrab stops (or restores) delivering input to the local computer.
 	SetGrab(on bool)
 	Warp(x, y int)
+}
+
+// pasteHolder is a capture that can hold back Ctrl+V while armed reports
+// that files copied on another computer are on offer, sending evPaste
+// instead (Windows).
+type pasteHolder interface {
+	HoldPaste(armed func() bool)
 }
 
 // inputInjector replays input when another computer controls this one.

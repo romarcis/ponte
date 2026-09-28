@@ -124,7 +124,7 @@ func (c *winClipboard) Files() ([]string, bool) {
 	}
 	if r, _, _ := pIsClipboardFormatAv.Call(cfHDrop); r == 0 {
 		c.fseq = seq
-		return nil, false
+		return nil, true
 	}
 	if !openClipboard() {
 		return nil, false // busy: try again at the next look

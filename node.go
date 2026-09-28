@@ -116,7 +116,19 @@ type node struct {
 	lastCheck time.Time
 	moved     time.Time // last motion of this computer's own mouse
 	offEdge   bool      // the pointer left the screen edges since another computer let go
+
+	// Ctrl+V held back until the files copied on another computer arrive.
+	paste   *pasteWait
+	pasting atomic.Bool // for the keyboard hook
 }
+
+type pasteWait struct {
+	from string // the computer sending the files
+	by   *link  // who pressed Ctrl+V: the controlling computer, nil here
+	at   time.Time
+}
+
+const pasteTimeout = 2 * time.Minute
 
 func startNode(a *App) (*node, error) {
 	n := &node{
@@ -167,6 +179,12 @@ func startNode(a *App) (*node, error) {
 		a.setSetupError(err)
 	}
 
+	n.cs = startClipSync(a, n.clip, n.broadcast, n.stop)
+	n.cs.onFiles = func(from string, ok bool) { n.call(func() { n.filesArrived(from, ok) }) }
+	if h, ok := n.cap.(pasteHolder); ok {
+		h.HoldPaste(func() bool { return n.cs.armed.Load() || n.pasting.Load() })
+	}
+
 	ln, err := net.Listen("tcp", listenAddr)
 	if err != nil {
 		// The others can still be reached from here.
@@ -189,7 +207,6 @@ func startNode(a *App) (*node, error) {
 	for _, id := range a.peerIDs() {
 		n.since[id] = now
 	}
-	n.cs = startClipSync(a, n.clip, n.broadcast, n.stop)
 	go n.loop()
 	if n.port != 0 {
 		go announce(func() beacon {
@@ -436,7 +453,7 @@ func (n *node) run(l *link) {
 		if err == nil && len(msg) > 0 {
 			l.seen.Store(time.Now().UnixNano())
 			switch msg[0] {
-			case msgClipboard, msgFileStart, msgFileEntry, msgFileData, msgFileEnd:
+			case msgClipboard, msgFileOffer, msgFileStart, msgFileEntry, msgFileData, msgFileEnd:
 				n.cs.receivedIn(&l.in, msg)
 				continue
 			case msgBye:
@@ -580,6 +597,9 @@ func (n *node) dropLink(l *link, why string) {
 		n.release()
 		logf("<- %s non controlla più questo computer (%s)", l.name, why)
 	}
+	if n.paste != nil && n.paste.from == l.id {
+		n.endPaste() // the files will not come
+	}
 	logf("scollegato %s: %s", l.name, why)
 	n.publish()
 }
@@ -692,6 +712,10 @@ func (n *node) loop() {
 			}
 			n.checkRefused()
 			n.maintain()
+			if n.paste != nil && time.Since(n.paste.at) > pasteTimeout {
+				logf("i file da incollare non sono arrivati")
+				n.endPaste()
+			}
 		}
 	}
 }
@@ -742,6 +766,14 @@ func (n *node) handleMsg(l *link, msg []byte) {
 			n.target = n.leaveTarget()
 			n.leave(dir, f, l.name+" non accetta input: "+why)
 			notify(l.name+" non accetta il mouse", "Su "+l.name+" "+why+": Ponte non può comandarlo. Il mouse è tornato qui.")
+		}
+	case msgFileWant:
+		id := r.u32()
+		if paths := n.cs.offeredFiles(id); r.err == nil && paths != nil {
+			logf("%s incolla i file copiati qui: li invio", l.name)
+			go sendFiles(paths, l.send)
+		} else {
+			l.send(wbuf{msgFileEnd}.u16(0)) // no longer on offer
 		}
 	case msgTakeover:
 		if n.target == l {
@@ -845,6 +877,12 @@ func (n *node) replay(l *link, kind byte, r *rbuf) {
 		n.inj.Wheel(axis, int(int16(r.u16())))
 	case msgKey:
 		code, state := r.u16(), r.u8()
+		if code == keyV && state != 0 && n.holdPaste(n.injKeys) {
+			if state == 1 {
+				n.requestPaste(l)
+			}
+			return
+		}
 		if state == 0 {
 			delete(n.injKeys, code)
 		} else {
@@ -934,6 +972,10 @@ func (n *node) handle(ev inputEvent) {
 		n.takeBack()
 	}
 	switch ev.kind {
+	case evPaste:
+		if n.target == nil {
+			n.requestPaste(nil)
+		}
 	case evMotion:
 		n.moved = time.Now()
 	case evPos:
@@ -1230,3 +1272,78 @@ func awayFromCorners(v, size float64) float64 {
 
 // capsKeys are logged on the controlled computer, to follow capital letters.
 var capsKeys = map[uint16]string{42: "Shift sinistro", 54: "Shift destro", 58: "Bloc Maiusc"}
+
+// ---------- pasting files copied on another computer ----------
+
+// holdPaste tells whether a V pressed with keys held is a Ctrl+V to hold
+// back until the files copied on another computer arrive.
+func (n *node) holdPaste(keys map[uint16]bool) bool {
+	return (keys[keyLeftCtrl] || keys[keyRightCtrl]) && !keys[keyLeftAlt] && !keys[keyRightAlt] &&
+		(n.cs.armed.Load() || n.paste != nil)
+}
+
+// requestPaste asks for the files on offer; they are pasted when they
+// arrive. by is the computer that pressed Ctrl+V, nil for this one.
+func (n *node) requestPaste(by *link) {
+	if n.paste != nil {
+		return // already on their way
+	}
+	from, id, ok := n.cs.takeOffer()
+	l := n.links[from]
+	if !ok || l == nil {
+		n.pasteKeys(by) // nothing to wait for: paste what is here
+		return
+	}
+	n.paste = &pasteWait{from: from, by: by, at: time.Now()}
+	n.pasting.Store(true)
+	logf("incolla: chiedo a %s i file copiati", l.name)
+	l.send(wbuf{msgFileWant}.u32(id))
+}
+
+// filesArrived pastes the files asked for, now on the clipboard; when they
+// cannot come, what is on the clipboard.
+func (n *node) filesArrived(from string, ok bool) {
+	p := n.paste
+	if p == nil || p.from != from {
+		return
+	}
+	n.endPaste()
+	if !ok {
+		logf("i file copiati non sono più disponibili")
+	}
+	if n.by != p.by || n.target != nil {
+		return // the keyboard went elsewhere meanwhile
+	}
+	if p.by != nil && n.links[p.by.id] != p.by {
+		return
+	}
+	n.pasteKeys(p.by)
+}
+
+func (n *node) endPaste() {
+	n.paste = nil
+	n.pasting.Store(false)
+}
+
+// pasteKeys presses Ctrl+V here, adding Ctrl if it was let go meanwhile.
+func (n *node) pasteKeys(by *link) {
+	if n.inj == nil {
+		return
+	}
+	var ctrl bool
+	if by != nil {
+		ctrl = n.injKeys[keyLeftCtrl] || n.injKeys[keyRightCtrl]
+	} else {
+		_, l := n.local[keyLeftCtrl]
+		_, r := n.local[keyRightCtrl]
+		ctrl = l || r
+	}
+	if !ctrl {
+		n.inj.Key(keyLeftCtrl, 1)
+	}
+	n.inj.Key(keyV, 1)
+	n.inj.Key(keyV, 0)
+	if !ctrl {
+		n.inj.Key(keyLeftCtrl, 0)
+	}
+}

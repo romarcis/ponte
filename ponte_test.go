@@ -65,9 +65,22 @@ func (f *fakeInjector) last() string {
 }
 
 type fakeClip struct {
-	mu   sync.Mutex
-	text string
+	mu      sync.Mutex
+	text    string
+	files   []string
+	changed bool
 }
+
+func (f *fakeClip) Files() ([]string, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	c := f.changed
+	f.changed = false
+	return f.files, c
+}
+func (f *fakeClip) SetFiles(p []string)      { f.mu.Lock(); f.files = p; f.mu.Unlock() }
+func (f *fakeClip) copyFiles(p []string)     { f.mu.Lock(); f.files, f.changed = p, true; f.mu.Unlock() }
+func (f *fakeClip) pasted() (files []string) { f.mu.Lock(); defer f.mu.Unlock(); return f.files }
 
 func (f *fakeClip) Get() (string, bool) {
 	f.mu.Lock()
@@ -421,4 +434,73 @@ func TestHandshakeDropIsNotRefusal(t *testing.T) {
 		}
 		cli.Close()
 	}
+}
+
+// Copied files travel only when they are pasted with Ctrl+V on another
+// computer, typed there or from the computer controlling it.
+func TestPasteFetchesFiles(t *testing.T) {
+	pcs := newTestPCs(t, "Fisso", "Portatile")
+	a, b := pcs[0], pcs[1]
+	b.app.connect(a.id(), a.addr(), a.app.status().Code)
+	waitFor(t, "a and b linked", func() bool { return a.online(b) && b.online(a) })
+
+	src := t.TempDir()
+	os.WriteFile(filepath.Join(src, "uno.txt"), []byte("uno"), 0o600)
+	os.WriteFile(filepath.Join(src, "due.txt"), []byte("due"), 0o600)
+
+	// Copied on a: b only hears of it.
+	a.clip.copyFiles([]string{filepath.Join(src, "uno.txt")})
+	waitFor(t, "offer on b", func() bool { return b.app.node.cs.armed.Load() })
+	time.Sleep(100 * time.Millisecond)
+	if b.clip.pasted() != nil {
+		t.Fatal("files sent before the paste")
+	}
+
+	// Ctrl+V on b's own keyboard: the files come, then the paste.
+	b.cap.ch <- inputEvent{kind: evKey, code: keyLeftCtrl, val: 1}
+	b.cap.ch <- inputEvent{kind: evKey, code: keyV, val: 1}
+	b.cap.ch <- inputEvent{kind: evPaste}
+	waitFor(t, "pasted on b", func() bool { return b.inj.last() == "key 47 0" })
+	if p := b.clip.pasted(); len(p) != 1 || filepath.Base(p[0]) != "uno.txt" {
+		t.Fatalf("b clipboard: %v", p)
+	}
+	if b.inj.has("key 29 1") {
+		t.Fatal("Ctrl pressed again while held")
+	}
+	if b.app.node.cs.armed.Load() {
+		t.Fatal("offer still pending after the paste")
+	}
+	b.cap.ch <- inputEvent{kind: evKey, code: keyV, val: 0}
+	b.cap.ch <- inputEvent{kind: evKey, code: keyLeftCtrl, val: 0}
+
+	// Copied again on a, pasted on b from a's keyboard while a controls b.
+	a.clip.copyFiles([]string{filepath.Join(src, "due.txt")})
+	waitFor(t, "second offer on b", func() bool { return b.app.node.cs.armed.Load() })
+	a.cap.ch <- inputEvent{kind: evKey, code: keyScrollLock, val: 0}
+	waitFor(t, "a controlling b", func() bool { return b.app.status().State == "controlled" })
+	a.cap.ch <- inputEvent{kind: evKey, code: keyLeftCtrl, val: 1}
+	a.cap.ch <- inputEvent{kind: evKey, code: keyV, val: 1}
+	waitFor(t, "second paste on b", func() bool {
+		p := b.clip.pasted()
+		return len(p) == 1 && filepath.Base(p[0]) == "due.txt" && b.inj.last() == "key 47 0"
+	})
+	b.inj.mu.Lock()
+	vs := 0
+	for _, e := range b.inj.log {
+		if e == "key 47 1" {
+			vs++
+		}
+	}
+	b.inj.mu.Unlock()
+	if vs != 2 {
+		t.Fatalf("V pressed %d times on b, want 2 (one per paste)", vs)
+	}
+	a.cap.ch <- inputEvent{kind: evKey, code: keyV, val: 0}
+	a.cap.ch <- inputEvent{kind: evKey, code: keyLeftCtrl, val: 0}
+	waitFor(t, "keys released on b", func() bool { return b.inj.last() == "key 29 0" })
+
+	// With nothing on offer, Ctrl+V goes through as it is.
+	a.cap.ch <- inputEvent{kind: evKey, code: keyLeftCtrl, val: 1}
+	a.cap.ch <- inputEvent{kind: evKey, code: keyV, val: 1}
+	waitFor(t, "plain paste", func() bool { return b.inj.last() == "key 47 1" })
 }

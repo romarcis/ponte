@@ -37,8 +37,9 @@ someone uses the mouse of a computer being controlled, that computer takes it
 back at once, and from there it can control the others.
 
 Text copied on one computer can be pasted on the others; on Windows, files
-copied in Explorer too (up to 200 MB at a time). It can be turned off in
-Settings.
+copied in Explorer too (up to 200 MB at a time). Files travel only when you
+paste them with Ctrl+V on another computer, and only to that one. It can be
+turned off in Settings.
 
 Pairing happens once: after that the computers reconnect on their own. The
 trash icon next to a computer removes it from the whole group. The settings
@@ -137,6 +138,7 @@ example Italian) on both computers.
 
 - macOS is not supported yet.
 - Copied files are shared only between Windows computers; images are not
-  shared. On Linux, text needs `xclip` (X11) or `wl-clipboard` (Wayland).
+  shared. Files from another computer come with Ctrl+V only: **Incolla**
+  (paste) in the right-click menu pastes what was there before. On Linux, text needs `xclip` (X11) or `wl-clipboard` (Wayland).
 - On Windows, while you control another computer, the local pointer stays
   still in the middle of the screen.

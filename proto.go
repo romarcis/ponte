@@ -29,13 +29,19 @@ const (
 	msgFileStart = 13
 	msgFileEntry = 14 // dir u8, path string (relative, with /)
 	msgFileData  = 15 // raw bytes of the current file
-	msgFileEnd   = 16 // count u16, names string: what goes on the clipboard
+	msgFileEnd   = 16 // count u16, names string: what goes on the clipboard (none: they cannot be sent)
 
 	msgTakeover = 17 // to the controller: someone uses this computer's own mouse or keyboard
 	msgLayout   = 18 // the screen map: stamp i64, count u16, then id string, x, y int32
 	msgIntro    = 19 // pair with another computer of the group: id, name, os, addr string, key
 	msgForget   = 20 // remove this computer from the group: id string, when i64
 	msgMembers  = 21 // the computers this one is paired with: count u16, then id, name, os, addr; then removed ones: count u16, then id, when i64
+
+	// Copied files are not sent at once: the computer where they were
+	// copied offers them to all, and sends them only to the one where they
+	// are pasted with Ctrl+V.
+	msgFileOffer = 22 // id u32 (0: the offer is withdrawn)
+	msgFileWant  = 23 // id u32: send the files of this offer
 )
 
 // Mouse buttons.
