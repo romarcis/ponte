@@ -12,12 +12,18 @@
   --err:#dc3d4b; --err-soft:#fdecee; --shadow:0 1px 2px rgba(20,22,50,.06),0 8px 28px rgba(20,22,50,.08);
   --screen:#1d2140; --screen2:#2b3163;
 }
-@media (prefers-color-scheme:dark){:root{
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){
   --bg:#0f1120; --bg2:#141731; --card:#181b33; --card2:#1d2140; --line:#2a2f52; --text:#eef0ff; --muted:#9aa0c3;
   --accent:#7c7cff; --accent2:#a78bfa; --accent-soft:#25285a; --ok:#34d399; --ok-soft:#133329; --warn:#fbbf24; --warn-soft:#3a2d12;
   --err:#fb7185; --err-soft:#3b1a24; --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px rgba(0,0,0,.35);
   --screen:#0b0d1c; --screen2:#232858;
 }}
+:root[data-theme=dark]{
+  --bg:#0f1120; --bg2:#141731; --card:#181b33; --card2:#1d2140; --line:#2a2f52; --text:#eef0ff; --muted:#9aa0c3;
+  --accent:#7c7cff; --accent2:#a78bfa; --accent-soft:#25285a; --ok:#34d399; --ok-soft:#133329; --warn:#fbbf24; --warn-soft:#3a2d12;
+  --err:#fb7185; --err-soft:#3b1a24; --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px rgba(0,0,0,.35);
+  --screen:#0b0d1c; --screen2:#232858;
+}
 *{box-sizing:border-box}
 html{height:100%}body{margin:0;min-height:100%;background-attachment:fixed!important}
 body{font:15px/1.5 "Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,"Ubuntu","Cantarell",sans-serif;color:var(--text);
@@ -65,6 +71,9 @@ label.setrow:hover .st b{color:var(--accent)}
 .swatches{display:flex;gap:7px;align-items:center;flex-wrap:wrap}
 .swatches button,.swatches label{width:26px;height:26px;padding:0;border-radius:50%;flex:none;border:2px solid var(--card);box-shadow:0 0 0 1px var(--line)}
 .swatches .sel{box-shadow:0 0 0 2px var(--text)}
+.themes{display:flex;gap:4px;padding:3px;border-radius:10px;background:var(--card2);border:1px solid var(--line)}
+.themes button{border:0;background:none;color:var(--muted);padding:5px 12px;border-radius:7px;font-size:13px}
+.themes button.sel{background:var(--card);color:var(--text);box-shadow:var(--shadow)}
 .swatches label{background:conic-gradient(red,yellow,lime,cyan,blue,magenta,red);position:relative;overflow:hidden;cursor:pointer}
 .swatches input{position:absolute;inset:0;opacity:0;cursor:pointer}
 @keyframes pop{from{opacity:0;transform:translateY(-4px)}}
@@ -279,6 +288,9 @@ kbd{display:inline-block;font-family:inherit;font-weight:600;font-size:12.5px;li
           <label title="Scegli un altro colore" aria-label="Scegli un altro colore"><input type="color" id="colorpick"></label>
         </span>
       </div>
+      <div class="setrow colors"><span class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg></span><span class="st"><b>Tema</b><small>Automatico segue il tema di Windows.</small></span>
+        <div class="themes" id="themes"><button data-theme="">Automatico</button><button data-theme="light">Chiaro</button><button data-theme="dark">Scuro</button></div>
+      </div>
       <label class="setrow" id="ripple"><span class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="2"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="10"/></svg></span><span class="st"><b>Cerchi intorno al puntatore</b><small>A ogni passaggio da un computer all'altro, per ritrovare subito la freccia.</small></span><span class="switch" id="ripplesw"></span></label>
     </div>
 
@@ -292,6 +304,7 @@ kbd{display:inline-block;font-family:inherit;font-weight:600;font-size:12.5px;li
       <div class="setrow"><span class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg></span><span class="st"><b>Log per segnalare un problema</b><small>Da allegare alla segnalazione su GitHub.</small></span><button class="btn small ghost" id="getlog">Scarica</button></div>
       <div class="setrow"><span class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5"/></svg></span><span class="st"><b>Versione</b><small id="setver"></small></span><button class="btn small ghost" id="checkupdate">Cerca aggiornamenti</button></div>
       <div class="setrow" id="removerow"><span class="si danger"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg></span><span class="st"><b>Rimuovi Ponte da questo PC</b><small>Toglie il servizio di Ponte e l'avvio con il computer, poi chiude Ponte. Dopo puoi cancellare Ponte.exe.</small></span><button class="btn small ghost danger" id="remove">Rimuovi</button></div>
+      <div class="setrow"><span class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg></span><span class="st"><b>Metti in pausa</b><small>Ponte si ferma finché non lo riprendi, anche dall'icona vicino all'orologio.</small></span><button class="btn small ghost" id="pausebtn">Pausa</button></div>
       <div class="setrow"><span class="si danger"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10"/></svg></span><span class="st"><b>Esci da Ponte</b><small>Mouse e tastiera tornano a funzionare solo su ciascun computer.</small></span><button class="btn small ghost danger" id="quit">Esci</button></div>
     </div>
   </section>
@@ -408,6 +421,8 @@ function render() {
   $("#ripplesw").classList.toggle("on", S.ripple);
   const st = document.documentElement.style, preset = $(`#colors [data-color="${S.color}"]`);
   for (const [k, v] of [["--accent", S.color], ["--accent2", S.color], ["--accent-soft", S.color && `color-mix(in srgb,${S.color} 16%,var(--card))`], ["--logo", S.color], ["--logo2", S.color]]) v ? st.setProperty(k, v) : st.removeProperty(k);
+  S.theme ? document.documentElement.dataset.theme = S.theme : delete document.documentElement.dataset.theme;
+  document.querySelectorAll("#themes button").forEach(b => b.classList.toggle("sel", b.dataset.theme === S.theme));
   document.querySelectorAll("#colors .sel").forEach(b => b.classList.remove("sel"));
   (preset || $("#colors label")).classList.add("sel");
   // Not while the color window is open: the refresh put back the old color
@@ -504,6 +519,10 @@ function renderState() {
     h = `<div class="status"><span class="dot live"></span><div><h2>Stai usando ${who}</h2>
       <p class="muted">Mouse e tastiera di questo computer ora controllano ${who}.</p></div></div>
       <div class="tip">${icon.info}<span>Per tornare qui premi <kbd>Bloc Scorr</kbd> oppure <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>Esc</kbd>.</span></div>`;
+  } else if (S.state === "paused") {
+    h = `<div class="status"><span class="dot"></span><div><h2>Ponte è in pausa</h2>
+      <p class="muted">Mouse e tastiera funzionano solo su questo computer, e gli altri computer non lo vedono.</p></div></div>
+      <div style="margin-top:14px"><button class="btn" id="resume">Riprendi</button></div>`;
   } else if (S.state === "error") {
     h = `<div class="status"><span class="dot err"></span><div><h2>Ponte non è attivo</h2><p class="muted">Risolvi il problema indicato sopra.</p></div></div>`;
   } else if (!S.peers.length) {
@@ -603,6 +622,9 @@ document.addEventListener("click", async e => {
   else if (t.id === "autostart") { e.preventDefault(); S = await api("/api/autostart", {on: S.autostart ? "0" : "1"}); render(); toast(S.autostart ? "Ponte partirà insieme al computer" : "Avvio automatico disattivato"); }
   else if (t.id === "clipboard") { e.preventDefault(); S = await api("/api/clipboard", {on: S.clipboard ? "0" : "1"}); render(); toast(S.clipboard ? "Testo e file copiati passano da un computer all'altro" : "Condivisione di testo e file disattivata"); }
   else if (t.id === "ripple") { e.preventDefault(); S = await api("/api/ripple", {on: S.ripple ? "0" : "1"}); render(); toast(S.ripple ? "Il puntatore si mostra con dei cerchi a ogni passaggio" : "Cerchi intorno al puntatore disattivati"); }
+  else if (t.dataset.theme !== undefined) { S = await api("/api/theme", {theme: t.dataset.theme}); render(); }
+  else if (t.id === "pausebtn") { settingsOpen = false; t.disabled = true; S = await api("/api/pause", {on: "1"}); t.disabled = false; render(); }
+  else if (t.id === "resume") { t.disabled = true; S = await api("/api/pause", {on: "0"}); render(); }
   else if (t.dataset.color !== undefined) { S = await api("/api/color", {color: t.dataset.color}); render(); }
   else if (t.id === "getlog") { location.href = "/ponte-log.txt?t=" + TOKEN; toast("Log salvato in Download: allegalo alla segnalazione su github.com/romarcis/ponte/issues"); }
   else if (t.id === "quit") { await api("/api/quit", {}); document.body.innerHTML = '<div class="app"><div class="card center" style="margin-top:80px"><h2>Ponte è stato chiuso</h2><p class="muted">Il mouse e la tastiera tornano a funzionare solo su ciascun computer.</p></div></div>'; clearInterval(timer); }

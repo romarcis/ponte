@@ -71,6 +71,14 @@ func serveUI(ln net.Listener, app *App) {
 		return s
 	}
 	api("GET /api/state", func(map[string]string) any { return state() })
+	api("POST /api/pause", func(b map[string]string) any {
+		if b["on"] == "1" {
+			app.pause()
+		} else {
+			app.start()
+		}
+		return state()
+	})
 	api("POST /api/retry", func(map[string]string) any { app.start(); return state() })
 	api("POST /api/layout", func(b map[string]string) any {
 		x, errX := strconv.Atoi(b["x"])
@@ -86,6 +94,7 @@ func serveUI(ln net.Listener, app *App) {
 		return state()
 	})
 	api("POST /api/clipboard", func(b map[string]string) any { app.setClipboard(b["on"] == "1"); return state() })
+	api("POST /api/theme", func(b map[string]string) any { app.setTheme(b["theme"]); return state() })
 	api("POST /api/color", func(b map[string]string) any { app.setColor(b["color"]); return state() })
 	api("POST /api/ripple", func(b map[string]string) any { app.setRipple(b["on"] == "1"); return state() })
 	api("POST /api/forget", func(b map[string]string) any { app.forget(b["id"]); return state() })

@@ -25,7 +25,8 @@ type App struct {
 	codeFails int
 	codeUntil time.Time // wrong codes: no more tries until then
 
-	node *node
+	node   *node
+	paused bool // turned off for a while from the tray icon or the window
 
 	startMu sync.Mutex // one start at a time
 }
@@ -58,6 +59,7 @@ type status struct {
 	ClipboardOK bool            `json:"clipboardOK"`
 	Ripple      bool            `json:"ripple"`
 	Color       string          `json:"color"`
+	Theme       string          `json:"theme"`
 	Update      string          `json:"update"` // newer version on GitHub
 }
 
@@ -77,7 +79,7 @@ func (a *App) status() status {
 		ID: a.cfg.id(), Name: a.cfg.Name, OS: runtime.GOOS, Version: version, State: "starting",
 		Code: a.code, Error: a.errMsg, ErrorHelp: a.errHelp,
 		Found: []foundPeer{}, Peers: []peerView{}, Layout: a.cfg.Layout.clone().Pos,
-		Clipboard: !a.cfg.NoClipboard, Ripple: !a.cfg.NoRipple, Color: a.cfg.Color, Update: updateAvailable(),
+		Clipboard: !a.cfg.NoClipboard, Ripple: !a.cfg.NoRipple, Color: a.cfg.Color, Theme: a.cfg.Theme, Update: updateAvailable(),
 	}
 	for id, p := range a.cfg.Peers {
 		s.Peers = append(s.Peers, peerView{ID: id, Name: p.Name, OS: p.OS})
@@ -87,10 +89,13 @@ func (a *App) status() status {
 			delete(s.Layout, id) // not known here (yet)
 		}
 	}
+	paused := a.paused
 	a.mu.Unlock()
 	sort.Slice(s.Peers, func(i, j int) bool { return s.Peers[i].Name < s.Peers[j].Name })
 	if n == nil {
-		if s.Error != "" {
+		if paused {
+			s.State = "paused"
+		} else if s.Error != "" {
 			s.State = "error"
 		}
 		return s
@@ -151,6 +156,14 @@ func (a *App) start() error {
 	defer a.startMu.Unlock()
 	a.shutdown()
 	a.clearError()
+	a.mu.Lock()
+	wasPaused := a.paused
+	a.paused = false
+	a.mu.Unlock()
+	if wasPaused {
+		logf("Ponte riprende")
+		colorChanged()
+	}
 	n, err := startNode(a)
 	if err != nil {
 		logf("avvio: %v", err)
@@ -161,6 +174,30 @@ func (a *App) start() error {
 	a.node = n
 	a.mu.Unlock()
 	return nil
+}
+
+// pause turns Ponte off until resume or the next start: this computer
+// drops out of the group, and its mouse and keyboard stay its own.
+func (a *App) pause() {
+	a.startMu.Lock()
+	defer a.startMu.Unlock()
+	a.mu.Lock()
+	if a.paused {
+		a.mu.Unlock()
+		return
+	}
+	a.paused = true
+	a.mu.Unlock()
+	logf("Ponte in pausa")
+	a.shutdown()
+	a.clearError()
+	colorChanged()
+}
+
+func (a *App) isPaused() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.paused
 }
 
 func (a *App) clipboardOn() bool {
@@ -201,6 +238,16 @@ func (a *App) setColor(c string) {
 	a.cfg.save()
 	a.mu.Unlock()
 	colorChanged()
+}
+
+func (a *App) setTheme(t string) {
+	if t != "" && t != "light" && t != "dark" {
+		return
+	}
+	a.mu.Lock()
+	a.cfg.Theme = t
+	a.cfg.save()
+	a.mu.Unlock()
 }
 
 func validColor(c string) bool {

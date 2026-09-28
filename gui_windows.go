@@ -86,8 +86,9 @@ const (
 	nifInfo    = 0x10
 	niifUser   = 0x04
 
-	menuOpen = 1
-	menuQuit = 2
+	menuOpen  = 1
+	menuQuit  = 2
+	menuPause = 3
 )
 
 type wndClassEx struct {
@@ -174,8 +175,11 @@ func loadIcon(size int) uintptr {
 	b, _ := iconFS.ReadFile(fmt.Sprintf("assets/icon-%d.png", best))
 	gui.app.mu.Lock()
 	custom := gui.app.cfg.Color != ""
+	paused := gui.app.paused
 	gui.app.mu.Unlock()
-	if custom {
+	if paused {
+		b = tintPNG(b, 0x9a9a9a) // grey while paused
+	} else if custom {
 		b = tintPNG(b, gui.app.rippleRGB())
 	}
 	h, _, _ := pCreateIconFromRes.Call(uintptr(unsafe.Pointer(&b[0])), uintptr(len(b)), 1, 0x00030000, uintptr(size), uintptr(size), 0)
@@ -274,6 +278,8 @@ func updateTrayTip() {
 		tip = "Ponte · Stai usando " + name(s.Target)
 	case s.State == "controlled":
 		tip = "Ponte · " + name(s.By) + " sta usando questo computer"
+	case s.State == "paused":
+		tip = "Ponte · In pausa"
 	case s.State == "error":
 		tip = "Ponte · " + s.Error
 	case online == 1:
@@ -303,6 +309,8 @@ func trayBalloon(title, text string) {
 func trayMenu() {
 	h, _, _ := pCreatePopupMenu.Call()
 	pAppendMenu.Call(h, 0, menuOpen, uintptr(unsafe.Pointer(wstr("Apri Ponte"))))
+	paused := gui.app.isPaused()
+	pAppendMenu.Call(h, 0, menuPause, uintptr(unsafe.Pointer(wstr(map[bool]string{false: "Metti in pausa", true: "Riprendi Ponte"}[paused]))))
 	pAppendMenu.Call(h, 0x800, 0, 0) // separator
 	pAppendMenu.Call(h, 0, menuQuit, uintptr(unsafe.Pointer(wstr("Esci da Ponte"))))
 	pSetMenuDefaultItem.Call(h, menuOpen, 0)
@@ -317,6 +325,16 @@ func trayMenu() {
 		showMain()
 	case menuQuit:
 		exitApp()
+	case menuPause:
+		// Stopping waits for the connections: not on the window's thread.
+		go func() {
+			if paused {
+				gui.app.start()
+			} else {
+				gui.app.pause()
+			}
+			pPostMessage.Call(gui.trayHwnd, wmTimer, 0, 0)
+		}()
 	}
 }
 
