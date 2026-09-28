@@ -67,6 +67,8 @@ func serviceCommand(args []string) bool {
 		}
 	case "--input-helper":
 		runInputHelper()
+	case "--desktop-helper":
+		runDesktopHelper()
 	default:
 		return false
 	}
@@ -384,21 +386,101 @@ func startDeskWorker(d uintptr, name string, inj *winInjector) *deskWorker {
 		// no later goroutine inherits its desktop.
 		runtime.LockOSThread()
 		defer close(w.done)
+		var child *deskProcess
 		if d != 0 {
 			// Before any other call that could give the thread a window or
 			// a hook.
 			if r, _, err := pSetThreadDesktop.Call(d); r == 0 {
 				logf("passaggio al desktop %s: %v", name, err)
+				if child, err = startDeskProcess(name); err != nil {
+					logf("aiutante sul desktop %s: %v", name, err)
+				} else {
+					logf("desktop attivo: %s (con un aiutante apposito)", name)
+				}
 			} else {
 				logf("desktop attivo: %s", name)
 			}
 		}
 		for msg := range w.in {
-			replayHelperMsg(inj, msg)
+			if child != nil && !child.send(msg) {
+				child.close()
+				child = nil
+			}
+			if child == nil {
+				replayHelperMsg(inj, msg)
+			}
+		}
+		if child != nil {
+			child.close()
 		}
 	}()
 	return w
 }
+
+// deskProcess is a copy of Ponte started right on a desktop, for when the
+// helper cannot move a thread there: every thread of a process begins on
+// the desktop it was started on. It replays what it reads on its input.
+type deskProcess struct {
+	proc windows.Handle
+	in   windows.Handle
+}
+
+func startDeskProcess(name string) (*deskProcess, error) {
+	exe, err := os.Executable()
+	if err != nil {
+		return nil, err
+	}
+	sa := &windows.SecurityAttributes{InheritHandle: 1}
+	sa.Length = uint32(unsafe.Sizeof(*sa))
+	var r, w windows.Handle
+	if err := windows.CreatePipe(&r, &w, sa, 64<<10); err != nil {
+		return nil, err
+	}
+	defer windows.CloseHandle(r)
+	windows.SetHandleInformation(w, windows.HANDLE_FLAG_INHERIT, 0)
+	cmd, _ := windows.UTF16PtrFromString(`"` + exe + `" --desktop-helper`)
+	desk, _ := windows.UTF16PtrFromString(`winsta0\` + name)
+	si := windows.StartupInfo{Desktop: desk, Flags: windows.STARTF_USESTDHANDLES, StdInput: r}
+	si.Cb = uint32(unsafe.Sizeof(si))
+	var pi windows.ProcessInformation
+	if err := windows.CreateProcess(nil, cmd, nil, nil, true, windows.CREATE_NO_WINDOW, nil, nil, &si, &pi); err != nil {
+		windows.CloseHandle(w)
+		return nil, err
+	}
+	windows.CloseHandle(pi.Thread)
+	return &deskProcess{proc: pi.Process, in: w}, nil
+}
+
+func (p *deskProcess) send(msg []byte) bool {
+	var n uint32
+	return windows.WriteFile(p.in, append([]byte{byte(len(msg))}, msg...), &n, nil) == nil
+}
+
+// close lets the process replay what it was given and end.
+func (p *deskProcess) close() {
+	windows.CloseHandle(p.in)
+	if ev, _ := windows.WaitForSingleObject(p.proc, 1000); ev != windows.WAIT_OBJECT_0 {
+		windows.TerminateProcess(p.proc, 0)
+	}
+	windows.CloseHandle(p.proc)
+}
+
+// runDesktopHelper replays the messages the helper writes on its input,
+// until the helper closes it.
+func runDesktopHelper() {
+	inHelper = true
+	serviceLog()
+	in, err := windows.GetStdHandle(windows.STD_INPUT_HANDLE)
+	if err != nil {
+		return
+	}
+	serveHelper(in, &deskReplay{inj: &winInjector{}})
+}
+
+// deskReplay replays on the desktop the thread is on.
+type deskReplay struct{ inj *winInjector }
+
+func (d *deskReplay) replay(msg []byte) { replayHelperMsg(d.inj, msg) }
 
 func runInputHelper() {
 	inHelper = true
@@ -436,7 +518,7 @@ func runInputHelper() {
 // serveHelper replays the input Ponte sends: each message is one byte of
 // length, then a mouse, button, wheel or key message of the network
 // protocol.
-func serveHelper(h windows.Handle, desk *inputDesktop) {
+func serveHelper(h windows.Handle, desk interface{ replay([]byte) }) {
 	var buf [256]byte
 	read := func(p []byte) error {
 		for len(p) > 0 {
