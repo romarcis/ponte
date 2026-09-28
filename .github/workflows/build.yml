@@ -1,0 +1,46 @@
+# Tests and builds Ponte on every change. Pushing a tag like v1.2.0 also
+# publishes a GitHub Release with the executables attached.
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Test
+        run: |
+          go vet ./...
+          go test ./...
+
+      - name: Build
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then export VERSION="${GITHUB_REF_NAME#v}"; fi
+          ./build.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ponte
+          path: dist/*
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --title "Ponte ${GITHUB_REF_NAME#v}" \
+            --generate-notes
