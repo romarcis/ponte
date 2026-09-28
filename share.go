@@ -182,14 +182,14 @@ func (s *shareCtl) loop() {
 		select {
 		case <-s.stop:
 			if s.cl != nil {
-				s.leave(false)
+				s.leave(false, "Ponte chiuso")
 				s.cl.send([]byte{msgBye})
 				s.cl.close()
 			}
 			return
 		case p := <-s.newCl:
 			if s.cl != nil {
-				s.leave(false)
+				s.leave(false, "altro computer collegato")
 				s.cl.close()
 			}
 			s.cl = p
@@ -197,14 +197,14 @@ func (s *shareCtl) loop() {
 			s.app.setState("connected", p.name, p.os)
 		case p := <-s.gone:
 			if p == s.cl {
-				s.leave(false)
+				s.leave(false, "scollegato")
 				s.cl = nil
 				s.app.setState("waiting", "", "")
 				logf("scollegato %s", p.name)
 			}
 		case id := <-s.dropID:
 			if s.cl != nil && s.cl.id == id {
-				s.leave(false)
+				s.leave(false, "computer dimenticato")
 				s.cl.close()
 			}
 		case ev := <-s.events:
@@ -217,7 +217,7 @@ func (s *shareCtl) loop() {
 			// peer that stopped answering.
 			if time.Since(time.Unix(0, s.cl.seen.Load())) > peerTimeout {
 				logf("%s non risponde", s.cl.name)
-				s.leave(false)
+				s.leave(false, "non risponde")
 				s.cl.close()
 				break
 			}
@@ -245,7 +245,7 @@ func (s *shareCtl) handle(ev inputEvent) {
 	switch ev.kind {
 	case evPos:
 		if !s.remote && s.cl != nil && s.atEdge(int(ev.x), int(ev.y)) && !s.heldLocally() {
-			s.enter(int(ev.x), int(ev.y), false)
+			s.enter(int(ev.x), int(ev.y), false, "bordo dello schermo")
 		}
 	case evRel:
 		if s.remote {
@@ -274,15 +274,15 @@ func (s *shareCtl) handle(ev inputEvent) {
 			// Act on release, so the key is never left pressed on either side.
 			if ev.val == 0 {
 				if s.remote {
-					s.leave(false)
+					s.leave(false, "Bloc Scorr")
 				} else if s.cl != nil {
-					s.enter(0, 0, true)
+					s.enter(0, 0, true, "Bloc Scorr")
 				}
 			}
 			return
 		}
 		if ev.code == keyEsc && ev.val == 1 && s.remote && s.modsHeld(s.held) {
-			s.leave(false) // Ctrl+Alt+Esc: emergency way back
+			s.leave(false, "Ctrl+Alt+Esc") // Ctrl+Alt+Esc: emergency way back
 			return
 		}
 		if s.remote {
@@ -315,7 +315,7 @@ func (s *shareCtl) atEdge(x, y int) bool {
 	return false
 }
 
-func (s *shareCtl) enter(x, y int, center bool) {
+func (s *shareCtl) enter(x, y int, center bool, why string) {
 	bx, by, bw, bh := s.cap.Bounds()
 	w, h := float64(s.cl.w), float64(s.cl.h)
 	fx := float64(x-bx) / float64(max(bw, 1))
@@ -336,6 +336,7 @@ func (s *shareCtl) enter(x, y int, center bool) {
 	s.cap.SetGrab(true)
 	s.cl.send(encEnter(int(s.rx), int(s.ry)))
 	s.app.setState("active", s.cl.name, s.cl.os)
+	logf("-> passo a %s (%s)", s.cl.name, why)
 }
 
 func (s *shareCtl) move(dx, dy float64) {
@@ -354,7 +355,7 @@ func (s *shareCtl) move(dx, dy float64) {
 		out = s.ry > h-1
 	}
 	if out && len(s.heldBtn) == 0 && s.cap.EdgeSwitch() {
-		s.leave(true)
+		s.leave(true, "bordo dello schermo")
 		return
 	}
 	s.rx = min(max(s.rx, 0), w-1)
@@ -364,11 +365,12 @@ func (s *shareCtl) move(dx, dy float64) {
 
 // leave gives control back to this computer. With warp, the local pointer
 // appears on the shared edge at the height where it left the other screen.
-func (s *shareCtl) leave(warp bool) {
+func (s *shareCtl) leave(warp bool, why string) {
 	if !s.remote {
 		return
 	}
 	s.remote = false
+	logf("<- torno a questo computer (%s)", why)
 	if s.cl != nil {
 		for k := range s.held {
 			s.cl.send(encKey(k, 0))

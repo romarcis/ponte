@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -34,6 +36,17 @@ func serveUI(ln net.Listener, app *App) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-store")
 		w.Write(page)
+	})
+	// The log of this run, to attach to a bug report.
+	mux.HandleFunc("GET /ponte-log.txt", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("t") != token {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		b, _ := os.ReadFile(filepath.Join(configDir(), "ponte.log"))
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Header().Set("Content-Disposition", `attachment; filename="ponte-log.txt"`)
+		w.Write(b)
 	})
 	api := func(path string, h func(body map[string]string) any) {
 		mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {

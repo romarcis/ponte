@@ -164,7 +164,7 @@ func (r *recvCtl) loop() {
 	}
 }
 
-func (r *recvCtl) session(req *connectReq) error {
+func (r *recvCtl) session(req *connectReq) (err error) {
 	mode, secret := authModeCode, []byte(req.code)
 	if req.code == "" {
 		r.app.mu.Lock()
@@ -239,6 +239,13 @@ func (r *recvCtl) session(req *connectReq) error {
 	r.app.mu.Unlock()
 	r.app.setState("connected", name, peerOS)
 	logf("collegato a %s (%s)", name, req.addr)
+	defer func() {
+		if err == nil {
+			logf("scollegato da %s: Ponte chiuso", name)
+		} else {
+			logf("scollegato da %s: %v", name, err)
+		}
+	}()
 
 	clipStop := make(chan struct{})
 	defer close(clipStop)
@@ -279,6 +286,7 @@ func (r *recvCtl) session(req *connectReq) error {
 		case msgEnter:
 			x, y := rb.i32(), rb.i32()
 			r.app.setState("active", name, peerOS)
+			logf("-> %s usa questo computer", name)
 			r.inj.MouseAbs(int(x), int(y))
 			if r.app.rippleOn() {
 				showRipple(int(x), int(y))
@@ -286,6 +294,7 @@ func (r *recvCtl) session(req *connectReq) error {
 		case msgLeave:
 			release()
 			r.app.setState("connected", name, peerOS)
+			logf("<- %s torna al suo schermo", name)
 		case msgMouse:
 			r.inj.MouseAbs(int(rb.i32()), int(rb.i32()))
 		case msgButton:
