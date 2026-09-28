@@ -365,7 +365,7 @@ function render() {
   document.querySelectorAll("#colors .sel").forEach(b => b.classList.remove("sel"));
   (preset || $("#colors label")).classList.add("sel");
   if (S.color) $("#colorpick").value = S.color;
-  $("#ripple").hidden = S.role !== "receive" || S.os !== "windows";
+  $("#ripple").hidden = !S.role || S.os !== "windows";
   $("#changerole").hidden = !S.role;
   $("#v-welcome").hidden = !!S.role;
   $("#v-share").hidden = S.role !== "share";

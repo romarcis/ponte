@@ -95,6 +95,25 @@ func TestEndToEnd(t *testing.T) {
 		return cliClip
 	}
 
+	var rippleMu sync.Mutex
+	var ripples []string
+	rippleFx = func(x, y int, _ uint32) {
+		rippleMu.Lock()
+		ripples = append(ripples, fmt.Sprintf("%d %d", x, y))
+		rippleMu.Unlock()
+	}
+	defer func() { rippleFx = showRipple }()
+	rippled := func(s string) bool {
+		rippleMu.Lock()
+		defer rippleMu.Unlock()
+		for _, r := range ripples {
+			if r == s {
+				return true
+			}
+		}
+		return false
+	}
+
 	srv := &App{cfg: loadConfig(), state: "idle"}
 	srv.cfg.Name = "Fisso"
 	cli := &App{cfg: loadConfig(), state: "idle"}
@@ -182,6 +201,7 @@ func TestEndToEnd(t *testing.T) {
 	if cap.warp != [2]int{997, 355} {
 		t.Fatalf("warp = %v", cap.warp)
 	}
+	waitFor(t, "circles on arrival and on return", func() bool { return rippled("0 450") && rippled("997 355") })
 	waitFor(t, "client back to connected", func() bool { return cli.status().State == "connected" })
 	if inj.last() != "cursor false" {
 		t.Fatalf("pointer visibility not given back: %q", inj.last())

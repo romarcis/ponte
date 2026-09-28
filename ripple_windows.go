@@ -95,7 +95,7 @@ func ripple(x, y int, color uint32) {
 	}
 	defer pDestroyWindow.Call(hwnd)
 
-	const frames = 45 // about 0.75 s
+	const frames = 45              // about 0.75 s
 	blend := [4]byte{0, 0, 255, 1} // AC_SRC_OVER, opacity 255, AC_SRC_ALPHA
 	dim, src := point{int32(size), int32(size)}, point{}
 	var m winMsg

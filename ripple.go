@@ -2,7 +2,8 @@ package main
 
 import "math"
 
-// Circles drawn around the pointer when it arrives from the other computer.
+// Circles drawn around the pointer when it moves from one computer to the
+// other: on arrival on the controlled computer and when it comes back.
 
 const (
 	rippleRings        = 3
@@ -33,3 +34,6 @@ func rippleFrame(buf []uint32, size int, t, width float64, color uint32) {
 		}
 	}
 }
+
+// rippleFx shows the circles; tests replace it.
+var rippleFx = showRipple

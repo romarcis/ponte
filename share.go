@@ -384,8 +384,9 @@ func (s *shareCtl) leave(warp bool, why string) {
 	clear(s.held)
 	clear(s.heldBtn)
 	s.cap.SetGrab(false)
+	bx, by, bw, bh := s.cap.Bounds()
+	px, py := bw/2, bh/2 // Scroll Lock and the like: the pointer is mid-screen
 	if warp && s.cl != nil {
-		bx, by, bw, bh := s.cap.Bounds()
 		fx := s.rx / float64(s.cl.w)
 		fy := s.ry / float64(s.cl.h)
 		x := bx + int(fx*float64(bw))
@@ -401,5 +402,11 @@ func (s *shareCtl) leave(warp bool, why string) {
 			y = by + 2
 		}
 		s.cap.Warp(x, y)
+		px, py = x-bx, y-by
+	}
+	// The same circles that greet the pointer on the other computer show
+	// where it is back on this one.
+	if s.app.rippleOn() {
+		rippleFx(px, py, s.app.rippleRGB())
 	}
 }
