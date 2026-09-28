@@ -27,20 +27,15 @@ func regCmd(args ...string) *exec.Cmd {
 }
 
 func autostartEnabled() bool {
-	return regCmd("query", runKey, "/v", "Ponte").Run() == nil || adminStartEnabled()
+	return regCmd("query", runKey, "/v", "Ponte").Run() == nil
 }
 
 func setAutostart(on bool) error {
 	if !on {
 		regCmd("delete", runKey, "/v", "Ponte", "/f").Run()
-		if adminStartEnabled() {
-			return setAdminStart(false)
-		}
 		return nil
 	}
-	if adminStartEnabled() {
-		return nil // the administrator task already starts Ponte
-	}
+	// Started normally, Ponte then hands over to its administrator task.
 	exe, err := os.Executable()
 	if err != nil {
 		return err

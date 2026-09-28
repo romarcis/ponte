@@ -169,6 +169,7 @@ kbd{display:inline-block;font-family:inherit;font-weight:600;font-size:12.5px;li
 @keyframes spin{to{transform:rotate(360deg)}}
 
 /* alert */
+#alert:empty,#update:empty,#admin:empty{display:none}
 .alert{display:flex;gap:14px;border-radius:16px;padding:16px 18px;background:var(--err-soft);color:var(--text)}
 .alert svg{flex:none;width:22px;height:22px;color:var(--err);margin-top:2px}
 .alert b{display:block;margin-bottom:2px}
@@ -226,6 +227,7 @@ kbd{display:inline-block;font-family:inherit;font-weight:600;font-size:12.5px;li
   </div>
 
   <div id="alert"></div>
+  <div id="admin"></div>
   <div id="update"></div>
 
   <!-- settings -->
@@ -238,8 +240,6 @@ kbd{display:inline-block;font-family:inherit;font-weight:600;font-size:12.5px;li
     <div class="card setcard">
       <h3>Avvio</h3>
       <label class="setrow" id="autostart"><span class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v9M6.3 7.3a8 8 0 1 0 11.4 0"/></svg></span><span class="st"><b>Avvia con il computer</b><small>Ponte parte da solo quando accedi a Windows.</small></span><span class="switch" id="autosw"></span></label>
-      <label class="setrow" id="adminstart"><span class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l7 3v5c0 5-3 8.5-7 10-4-1.5-7-5-7-10V6l7-3z"/></svg></span><span class="st"><b>Avvia come amministratore</b><small>Per usare con Ponte le app avviate come amministratore, come FanControl o PC Manager. Windows chiede una conferma la prima volta.</small></span><span class="switch" id="adminsw"></span></label>
-      <label class="setrow" id="service"><span class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l7 3v5c0 5-3 8.5-7 10-4-1.5-7-5-7-10V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg></span><span class="st"><b>Comanda anche le richieste di Windows</b><small>Come Input Director: mouse e tastiera funzionano anche sulle richieste di amministratore e sulla schermata di blocco. Windows chiede una conferma per installarlo.</small></span><span class="switch" id="servicesw"></span></label>
     </div>
 
     <div class="card setcard">
@@ -273,6 +273,7 @@ kbd{display:inline-block;font-family:inherit;font-weight:600;font-size:12.5px;li
       <h3>Assistenza</h3>
       <div class="setrow"><span class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg></span><span class="st"><b>Log per segnalare un problema</b><small>Da allegare alla segnalazione su GitHub.</small></span><button class="btn small ghost" id="getlog">Scarica</button></div>
       <div class="setrow"><span class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5"/></svg></span><span class="st"><b>Versione</b><small id="setver"></small></span><button class="btn small ghost" id="checkupdate">Cerca aggiornamenti</button></div>
+      <div class="setrow" id="removerow"><span class="si danger"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg></span><span class="st"><b>Rimuovi Ponte da questo PC</b><small>Toglie il servizio di Ponte e l'avvio con il computer, poi chiude Ponte. Dopo puoi cancellare Ponte.exe.</small></span><button class="btn small ghost danger" id="remove">Rimuovi</button></div>
       <div class="setrow"><span class="si danger"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10"/></svg></span><span class="st"><b>Esci da Ponte</b><small>Mouse e tastiera tornano a funzionare solo su ciascun computer.</small></span><button class="btn small ghost danger" id="quit">Esci</button></div>
     </div>
   </section>
@@ -409,10 +410,9 @@ function render() {
   set("update", S.update ? `<div class="alert news">${icon.info}<div style="flex:1"><b>È disponibile Ponte ${esc(S.update)}</b><div class="help">Questo computer ha la versione ${esc(S.version)}. Ponte si riavvia da solo in pochi secondi; aggiorna anche l'altro computer.</div>
     <div class="acts"><button class="btn small" id="doupdate">Aggiorna e riavvia</button></div></div></div>` : "");
   $("#autosw").classList.toggle("on", S.autostart);
-  $("#adminstart").hidden = S.os !== "windows";
-  $("#adminsw").classList.toggle("on", S.adminStart);
-  $("#service").hidden = !S.service || S.role !== "receive";
-  $("#servicesw").classList.toggle("on", S.service === "on");
+  set("admin", S.needAdmin ? `<div class="alert">${icon.warn}<div style="flex:1"><b>Ponte non ha i permessi di amministratore</b><div class="help">Così potrebbe non funzionare come dovrebbe: mouse e tastiera dell'altro computer si fermano sulle richieste di conferma di Windows, sulla schermata di blocco e nei programmi avviati come amministratore.</div>
+    <div class="acts"><button class="btn small" id="grantadmin">Concedi i permessi</button></div></div></div>` : "");
+  $("#removerow").hidden = S.os !== "windows";
   $("#ver").textContent = S.version === "dev" ? "dev" : "v" + S.version;
   $("#clipsw").classList.toggle("on", S.clipboard);
   $("#ripplesw").classList.toggle("on", S.ripple);
@@ -568,22 +568,19 @@ document.addEventListener("click", async e => {
     else if (r.update) { S.update = r.update; render(); toast("È disponibile Ponte " + r.update); }
     else toast("Hai già la versione più recente");
   }
-  else if (t.id === "service") {
-    e.preventDefault();
-    const on = S.service !== "on";
-    toast(on ? "Conferma la richiesta di Windows su questo computer…" : "Rimuovo il servizio di Ponte…");
-    const r = await api("/api/service", {on: on ? "1" : "0"});
-    if (r.error) toast("Non riuscito: " + r.error);
-    else { S = r; render(); toast(on ? "Servizio attivo: Ponte comanda anche le richieste di Windows" : "Servizio di Ponte rimosso"); }
+  else if (t.id === "grantadmin") {
+    t.disabled = true;
+    toast("Conferma la richiesta di Windows su questo computer…");
+    const r = await api("/api/admin", {});
+    if (r.error) { t.disabled = false; toast("Permessi non concessi: Ponte continua a funzionare, ma con i limiti indicati"); }
+    else toast("Ponte si riavvia come amministratore…");
   }
-  else if (t.id === "adminstart") {
-    e.preventDefault();
-    const on = !S.adminStart;
-    toast(on ? "Conferma la richiesta di Windows su questo computer…" : "Disattivo l'avvio come amministratore…");
-    const r = await api("/api/adminstart", {on: on ? "1" : "0"});
-    if (r.error) toast("Non riuscito: " + r.error);
-    else if (r.restart) toast("Ponte si riavvia come amministratore…");
-    else { S = r; render(); toast(on ? "Ponte partirà come amministratore" : "Ponte partirà di nuovo normalmente"); }
+  else if (t.id === "remove") {
+    if (!t.dataset.sure) { t.dataset.sure = "1"; t.textContent = "Conferma"; toast("Premi di nuovo per rimuovere Ponte da questo PC"); return; }
+    t.disabled = true;
+    const r = await api("/api/remove", {});
+    if (r.error) { t.disabled = false; delete t.dataset.sure; t.textContent = "Rimuovi"; toast("Non riuscito: " + r.error); }
+    else { document.body.innerHTML = '<div class="app"><div class="card center" style="margin-top:80px"><h2>Ponte è stato rimosso</h2><p class="muted">Il servizio e l\'avvio con il computer sono stati tolti. Ora puoi cancellare Ponte.exe.</p></div></div>'; clearInterval(timer); }
   }
   else if (t.id === "autostart") { e.preventDefault(); S = await api("/api/autostart", {on: S.autostart ? "0" : "1"}); render(); toast(S.autostart ? "Ponte partirà insieme al computer" : "Avvio automatico disattivato"); }
   else if (t.id === "clipboard") { e.preventDefault(); S = await api("/api/clipboard", {on: S.clipboard ? "0" : "1"}); render(); toast(S.clipboard ? "Testo e file copiati passano da un computer all'altro" : "Condivisione di testo e file disattivata"); }

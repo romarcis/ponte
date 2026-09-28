@@ -32,6 +32,7 @@ type config struct {
 	NoRipple      bool                     `json:"no_ripple"`
 	Color         string                   `json:"color"` // accent color "#rrggbb", "" = default
 	TrayHintShown bool                     `json:"tray_hint_shown"`
+	AdminDeclined bool                     `json:"admin_declined"` // said no to administrator rights
 	Clients       map[string]*pairedClient `json:"clients"`
 	Servers       map[string]*pairedServer `json:"servers"`
 }

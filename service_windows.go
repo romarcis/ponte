@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"crypto/sha256"
 	"fmt"
 	"io"
 	"log"
@@ -172,26 +174,6 @@ func copyFile(src, dst string) error {
 	return out.Close()
 }
 
-var svcCache struct {
-	sync.Mutex
-	state string
-	when  time.Time
-}
-
-// serviceState tells the window whether the service is installed: "off",
-// "on" (running) or "stopped". The window asks often, so the answer is kept
-// for a few seconds.
-func serviceState() string {
-	c := &svcCache
-	c.Lock()
-	defer c.Unlock()
-	if time.Since(c.when) < 3*time.Second {
-		return c.state
-	}
-	c.state, c.when = queryService(), time.Now()
-	return c.state
-}
-
 func queryService() string {
 	m, err := windows.OpenSCManager(nil, nil, windows.SC_MANAGER_CONNECT)
 	if err != nil {
@@ -211,18 +193,34 @@ func queryService() string {
 	return "stopped"
 }
 
-// setService installs or removes the service through a copy of Ponte run
-// as administrator: Windows asks for confirmation.
-func setService(on bool) error {
-	defer func() { svcCache.Lock(); svcCache.when = time.Time{}; svcCache.Unlock() }()
+// ensureService installs the service, or replaces it when its copy of
+// Ponte is not this one (after an update). It needs administrator rights.
+func ensureService() error {
 	exe, err := os.Executable()
 	if err != nil {
 		return err
 	}
-	if on {
-		return runAsAdmin(exe, "--install-service")
+	if queryService() == "on" && sameFile(exe, serviceExe()) {
+		return nil
 	}
-	return runAsAdmin(exe, "--uninstall-service")
+	return installService()
+}
+
+func sameFile(a, b string) bool {
+	sum := func(p string) []byte {
+		f, err := os.Open(p)
+		if err != nil {
+			return nil
+		}
+		defer f.Close()
+		h := sha256.New()
+		if _, err := io.Copy(h, f); err != nil {
+			return nil
+		}
+		return h.Sum(nil)
+	}
+	x, y := sum(a), sum(b)
+	return x != nil && bytes.Equal(x, y)
 }
 
 // ---------- service ----------

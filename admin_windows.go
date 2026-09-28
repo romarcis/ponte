@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/xml"
 	"errors"
 	"os"
@@ -17,9 +18,12 @@ import (
 
 // Windows ignores the input Ponte replays while a program run as
 // administrator (FanControl, PC Manager...) is in front, unless Ponte runs
-// as administrator too. Ponte can start that way at sign-in through a
-// scheduled task, which Windows runs without asking each time; creating it
-// asks for confirmation once.
+// as administrator too. The first time Ponte is opened it asks for
+// administrator rights once, and with them creates a scheduled task that
+// Windows runs as administrator without asking again, and installs the
+// Ponte service (service_windows.go). From then on a Ponte started
+// normally hands over to the task. If the user says no, Ponte keeps
+// working without them and the window says what does not work.
 
 const adminTask = "Ponte"
 
@@ -57,24 +61,6 @@ func forgetTaskState() {
 // isElevated tells whether this Ponte runs as administrator.
 func isElevated() bool { return selfElevated() }
 
-// setAdminStart creates or removes the task, through a copy of Ponte run as
-// administrator unless this one already is.
-func setAdminStart(on bool) error {
-	defer forgetTaskState()
-	arg := "--admin-start=off"
-	if on {
-		arg = "--admin-start=on"
-	}
-	if isElevated() {
-		return adminStartCommand(arg)
-	}
-	exe, err := os.Executable()
-	if err != nil {
-		return err
-	}
-	return runAsAdmin(exe, arg)
-}
-
 // shellExecuteInfo is SHELLEXECUTEINFOW.
 type shellExecuteInfo struct {
 	size                   uint32
@@ -97,6 +83,8 @@ var (
 	pGetExitCodeProcess  = kernel32.NewProc("GetExitCodeProcess")
 )
 
+var errAdminCancelled = errors.New("conferma di amministratore annullata")
+
 // runAsAdmin runs exe with arg as administrator and waits for it. The
 // request is tied to Ponte's window, so that Windows shows its confirmation
 // in front instead of only flashing it in the taskbar.
@@ -111,7 +99,7 @@ func runAsAdmin(exe, arg string) error {
 	in.size = uint32(unsafe.Sizeof(in))
 	if r, _, err := pShellExecuteEx.Call(uintptr(unsafe.Pointer(&in))); r == 0 {
 		if err == syscall.Errno(1223) { // ERROR_CANCELLED
-			return errors.New("conferma di amministratore annullata")
+			return errAdminCancelled
 		}
 		return err
 	}
@@ -125,51 +113,81 @@ func runAsAdmin(exe, arg string) error {
 	return nil
 }
 
-// adminStartCommand runs in the copy of Ponte started as administrator.
-func adminStartCommand(arg string) error {
-	defer forgetTaskState()
-	switch arg {
-	case "--admin-start=off":
-		if !adminStartEnabled() {
-			return nil
+// adminCommand runs the modes of the copy of Ponte started as
+// administrator: --setup prepares the task and the service, --remove takes
+// them away.
+func adminCommand(arg string) error {
+	if arg == "--remove" {
+		defer forgetTaskState()
+		if adminStartEnabled() {
+			if out, err := schtasks("/Delete", "/F", "/TN", adminTask).CombinedOutput(); err != nil {
+				return errors.New(strings.TrimSpace(string(out)))
+			}
 		}
-		if err := schtasks("/Delete", "/F", "/TN", adminTask).Run(); err != nil {
-			return err
-		}
-		logf("avvio come amministratore disattivato")
-	case "--admin-start=on":
-		exe, err := os.Executable()
-		if err != nil {
-			return err
-		}
-		f := filepath.Join(os.TempDir(), "ponte-task.xml")
-		if err := os.WriteFile(f, taskXML(exe), 0o600); err != nil {
-			return err
-		}
-		defer os.Remove(f)
-		if out, err := schtasks("/Create", "/F", "/TN", adminTask, "/XML", f).CombinedOutput(); err != nil {
-			return errors.New(strings.TrimSpace(string(out)))
-		}
-		regCmd("delete", runKey, "/v", "Ponte", "/f").Run() // the task replaces it
-		logf("avvio come amministratore attivato")
+		return uninstallService()
 	}
+	if err := ensureTask(); err != nil {
+		return err
+	}
+	return ensureService()
+}
+
+// ensureTask creates the task, or recreates it when it starts another copy
+// of Ponte or comes from an older Ponte, whose task also started it at
+// sign-in: that is now the job of "Avvia con il computer" alone.
+func ensureTask() error {
+	defer forgetTaskState()
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	out, err := schtasks("/Query", "/TN", adminTask, "/XML").Output()
+	old := err == nil && contains(out, "LogonTrigger")
+	if err == nil && !old && contains(out, xmlEscape(exe)) {
+		return nil
+	}
+	f := filepath.Join(os.TempDir(), "ponte-task.xml")
+	if err := os.WriteFile(f, taskXML(exe), 0o600); err != nil {
+		return err
+	}
+	defer os.Remove(f)
+	if out, err := schtasks("/Create", "/F", "/TN", adminTask, "/XML", f).CombinedOutput(); err != nil {
+		return errors.New(strings.TrimSpace(string(out)))
+	}
+	if old {
+		setAutostart(true) // it started with the computer through the old task
+	}
+	logf("attività per l'avvio come amministratore pronta")
 	return nil
 }
 
-// taskXML describes the task: at this user's sign-in, run Ponte with the
-// highest rights, on battery too and with no time limit (the defaults of
-// schtasks stop it after 3 days and on battery).
+// contains looks for s in the output of schtasks, which may be UTF-16.
+func contains(out []byte, s string) bool {
+	if strings.Contains(string(out), s) {
+		return true
+	}
+	var w []byte
+	for _, c := range utf16.Encode([]rune(s)) {
+		w = append(w, byte(c), byte(c>>8))
+	}
+	return bytes.Contains(out, w)
+}
+
+func xmlEscape(s string) string {
+	var b strings.Builder
+	xml.EscapeText(&b, []byte(s))
+	return b.String()
+}
+
+// taskXML describes the task: run on request Ponte with the highest
+// rights, on battery too and with no time limit (the defaults of schtasks
+// stop it after 3 days and on battery).
 func taskXML(exe string) []byte {
 	user := os.Getenv("USERDOMAIN") + `\` + os.Getenv("USERNAME")
-	esc := func(s string) string {
-		var b strings.Builder
-		xml.EscapeText(&b, []byte(s))
-		return b.String()
-	}
+	esc := xmlEscape
 	s := `<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
-  <RegistrationInfo><Description>Avvia Ponte come amministratore all'accesso</Description></RegistrationInfo>
-  <Triggers><LogonTrigger><Enabled>true</Enabled><UserId>` + esc(user) + `</UserId></LogonTrigger></Triggers>
+  <RegistrationInfo><Description>Avvia Ponte come amministratore</Description></RegistrationInfo>
   <Principals><Principal id="Author"><UserId>` + esc(user) + `</UserId><LogonType>InteractiveToken</LogonType><RunLevel>HighestAvailable</RunLevel></Principal></Principals>
   <Settings>
     <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
@@ -193,19 +211,97 @@ func taskXML(exe string) []byte {
 // caller then quits.
 func restartAsAdmin() error { return schtasks("/Run", "/TN", adminTask).Run() }
 
-// relaunchAsAdmin starts Ponte again through the task when the option is on
-// but this Ponte was started normally (by hand, after an update...): it
-// could then not control programs run as administrator. A stamp keeps it
-// from trying in a loop when the task cannot give administrator rights.
-func relaunchAsAdmin() bool {
-	if isElevated() || !adminStartEnabled() {
-		return false
-	}
-	stamp := filepath.Join(configDir(), "riavvio-amministratore")
-	if st, err := os.Stat(stamp); err == nil && time.Since(st.ModTime()) < time.Minute {
-		return false
+func relaunchStamp() string { return filepath.Join(configDir(), "riavvio-amministratore") }
+
+// relaunchAsAdmin starts Ponte again through the task, as administrator;
+// the caller then quits. show asks the new Ponte to open its window, which
+// the task starts hidden. The stamp also keeps Ponte from trying in a loop
+// when the task cannot give administrator rights: a Ponte run as
+// administrator removes it.
+func relaunchAsAdmin(show bool) error {
+	body := []byte{}
+	if show {
+		body = []byte("mostra")
 	}
 	os.MkdirAll(configDir(), 0o700)
-	os.WriteFile(stamp, nil, 0o600)
-	return restartAsAdmin() == nil
+	os.WriteFile(relaunchStamp(), body, 0o600)
+	return restartAsAdmin()
+}
+
+// startAsAdmin runs before a Ponte started normally goes on; true means it
+// handed over to a Ponte run as administrator and must quit. It asks for
+// administrator rights only the first time Ponte is opened by hand, not at
+// sign-in, and not again once the user said no: the window then offers it.
+func startAsAdmin(app *App, background bool) bool {
+	if isElevated() {
+		return false
+	}
+	if adminStartEnabled() {
+		if st, err := os.Stat(relaunchStamp()); err == nil && time.Since(st.ModTime()) < time.Minute {
+			return false // the task started this Ponte, still without rights
+		}
+		return relaunchAsAdmin(!background) == nil
+	}
+	if background || app.cfg.AdminDeclined {
+		return false
+	}
+	if err := grantAdmin(); err != nil {
+		if errors.Is(err, errAdminCancelled) {
+			app.cfg.AdminDeclined = true
+			app.cfg.save()
+		}
+		return false
+	}
+	return relaunchAsAdmin(true) == nil
+}
+
+// grantAdmin asks Windows for administrator rights and uses them to prepare
+// the task and the service.
+func grantAdmin() error {
+	defer forgetTaskState()
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	return runAsAdmin(exe, "--setup")
+}
+
+// removeAdmin takes the task and the service away, and the start with the
+// computer: what "Rimuovi Ponte da questo PC" does before Ponte quits.
+func removeAdmin() error {
+	var err error
+	if isElevated() {
+		err = adminCommand("--remove")
+	} else if adminStartEnabled() || queryService() != "off" {
+		var exe string
+		if exe, err = os.Executable(); err == nil {
+			err = runAsAdmin(exe, "--remove")
+		}
+	}
+	if err != nil {
+		return err
+	}
+	return setAutostart(false)
+}
+
+// setupAsAdmin runs in a Ponte started as administrator: it keeps the task
+// and the service up to date, after an update too. When the task started
+// it for a window opened by hand, it tells the caller to show the window.
+func setupAsAdmin() (show bool) {
+	if !isElevated() {
+		return false
+	}
+	if b, err := os.ReadFile(relaunchStamp()); err == nil && string(b) == "mostra" {
+		if st, err := os.Stat(relaunchStamp()); err == nil && time.Since(st.ModTime()) < time.Minute {
+			show = true
+		}
+	}
+	// Gone, so that a Ponte opened by hand soon after hands over again.
+	os.Remove(relaunchStamp())
+	go func() {
+		if err := adminCommand("--setup"); err != nil {
+			logf("preparazione come amministratore: %v", err)
+		}
+	}()
+	return show
 }

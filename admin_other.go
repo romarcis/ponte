@@ -4,9 +4,10 @@ package main
 
 import "errors"
 
-func adminStartEnabled() bool        { return false }
-func isElevated() bool               { return false }
-func setAdminStart(bool) error       { return errors.New("non supportato") }
-func adminStartCommand(string) error { return nil }
-func restartAsAdmin() error          { return errors.New("non supportato") }
-func relaunchAsAdmin() bool          { return false }
+func isElevated() bool             { return false }
+func adminCommand(string) error    { return nil }
+func startAsAdmin(*App, bool) bool { return false }
+func grantAdmin() error            { return errors.New("non supportato") }
+func removeAdmin() error           { return nil }
+func setupAsAdmin() bool           { return false }
+func relaunchAsAdmin(bool) error   { return errors.New("non supportato") }

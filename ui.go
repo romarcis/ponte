@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -16,11 +17,9 @@ var webFS embed.FS
 
 type uiState struct {
 	status
-	Autostart  bool   `json:"autostart"`
-	AdminStart bool   `json:"adminStart"` // Ponte starts as administrator at sign-in
-	Elevated   bool   `json:"elevated"`   // this Ponte runs as administrator
-	Service    string `json:"service"`    // Ponte service: "" (not on this system), off, on, stopped
-	CanFix     bool   `json:"canFix"`
+	Autostart bool `json:"autostart"`
+	NeedAdmin bool `json:"needAdmin"` // Windows, without administrator rights
+	CanFix    bool `json:"canFix"`
 }
 
 // serveUI serves the window's page and a small JSON API, only to this
@@ -66,7 +65,7 @@ func serveUI(ln net.Listener, app *App) {
 		})
 	}
 	state := func() any {
-		s := uiState{status: app.status(), Autostart: autostartEnabled(), AdminStart: adminStartEnabled(), Elevated: isElevated(), Service: serviceState()}
+		s := uiState{status: app.status(), Autostart: autostartEnabled(), NeedAdmin: runtime.GOOS == "windows" && !isElevated()}
 		s.CanFix = s.ErrorHelp != "" && canFixPermissions()
 		return s
 	}
@@ -88,35 +87,36 @@ func serveUI(ln net.Listener, app *App) {
 		}
 		return state()
 	})
-	api("POST /api/adminstart", func(b map[string]string) any {
-		on := b["on"] == "1"
-		if err := setAdminStart(on); err != nil {
-			logf("avvio come amministratore: %v", err)
+	api("POST /api/admin", func(map[string]string) any {
+		if err := grantAdmin(); err != nil {
+			logf("permessi di amministratore: %v", err)
 			return map[string]string{"error": err.Error()}
 		}
-		if !on {
-			setAutostart(true) // back to the normal start with the computer
+		app.mu.Lock()
+		app.cfg.AdminDeclined = false
+		app.cfg.save()
+		app.mu.Unlock()
+		if err := relaunchAsAdmin(true); err != nil {
+			logf("riavvio come amministratore: %v", err)
+			return map[string]string{"error": err.Error()}
 		}
-		if on && !isElevated() {
-			// Start again right away through the task, as administrator.
-			if err := restartAsAdmin(); err != nil {
-				logf("riavvio come amministratore: %v", err)
-				return map[string]string{"error": err.Error()}
-			}
-			go func() {
-				time.Sleep(200 * time.Millisecond)
-				quitApp(app)
-			}()
-			return map[string]string{"restart": "1"}
-		}
-		return state()
+		go func() {
+			time.Sleep(200 * time.Millisecond)
+			quitApp(app)
+		}()
+		return map[string]string{"restart": "1"}
 	})
-	api("POST /api/service", func(b map[string]string) any {
-		if err := setService(b["on"] == "1"); err != nil {
-			logf("servizio di Ponte: %v", err)
+	api("POST /api/remove", func(map[string]string) any {
+		if err := removeAdmin(); err != nil {
+			logf("rimozione di Ponte: %v", err)
 			return map[string]string{"error": err.Error()}
 		}
-		return state()
+		logf("Ponte rimosso da questo computer")
+		go func() {
+			time.Sleep(200 * time.Millisecond)
+			quitApp(app)
+		}()
+		return map[string]string{"ok": "1"}
 	})
 	api("POST /api/fix", func(map[string]string) any {
 		if err := fixPermissions(); err != nil {

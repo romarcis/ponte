@@ -45,11 +45,11 @@ func main() {
 			background = true
 		case "--after-update":
 			afterUpdate = true
-		case "--admin-start=on", "--admin-start=off":
-			// Started as administrator by setAdminStart.
+		case "--setup", "--remove":
+			// Started as administrator by grantAdmin or removeAdmin.
 			setupLog()
-			if err := adminStartCommand(a); err != nil {
-				logf("avvio come amministratore: %v", err)
+			if err := adminCommand(a); err != nil {
+				logf("amministratore (%s): %v", a, err)
 				os.Exit(1)
 			}
 			return
@@ -72,9 +72,9 @@ func main() {
 		showExisting(url, app.cfg.UIToken)
 		return
 	}
-	// Started normally although it should run as administrator: hand over
-	// to the administrator task, which waits for this port to be free.
-	if relaunchAsAdmin() {
+	// Started normally: hand over to a Ponte run as administrator, which
+	// waits for this port to be free.
+	if startAsAdmin(app, background) {
 		ln.Close()
 		return
 	}
@@ -82,6 +82,9 @@ func main() {
 	// the one already running.
 	setupLog()
 	cleanupUpdate()
+	if setupAsAdmin() {
+		background = false
+	}
 	go watchUpdates()
 	if app.cfg.Role != "" {
 		app.setRole(app.cfg.Role)
