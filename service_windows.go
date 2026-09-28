@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"sync"
 	"time"
 	"unsafe"
@@ -367,7 +366,7 @@ func runInputHelper() {
 	serviceLog()
 	runtime.LockOSThread() // SetThreadDesktop works per thread
 	logf("aiutante avviato (Ponte %s)", version)
-	sd, err := windows.SecurityDescriptorFromString("D:(A;;GA;;;SY)(A;;GRGW;;;IU)") // SYSTEM and signed-in users
+	sd, err := windows.SecurityDescriptorFromString("O:SYD:(A;;GA;;;SY)(A;;GRGW;;;IU)") // SYSTEM and signed-in users
 	if err != nil {
 		logf("aiutante: %v", err)
 		return
@@ -500,38 +499,28 @@ func helperSend(msg []byte) bool {
 	return true
 }
 
-// openHelper connects to the helper and checks it is the service's copy of
-// Ponte: another program could create the pipe first to read what is typed.
+// openHelper connects to the helper and checks the pipe belongs to it:
+// another program could create the pipe first to read what is typed. Only
+// SYSTEM or an administrator can own the pipe, while a program run by the
+// user cannot. (The helper's process itself cannot be inspected unless
+// Ponte runs as administrator.)
 func openHelper() (windows.Handle, error) {
 	name, _ := windows.UTF16PtrFromString(pipeName)
-	h, err := windows.CreateFile(name, windows.GENERIC_WRITE, 0, nil, windows.OPEN_EXISTING, 0, 0)
+	h, err := windows.CreateFile(name, windows.GENERIC_WRITE|windows.READ_CONTROL, 0, nil, windows.OPEN_EXISTING, 0, 0)
 	if err != nil {
 		return 0, err
 	}
-	var pid uint32
-	if err := windows.GetNamedPipeServerProcessId(h, &pid); err != nil {
+	sd, err := windows.GetSecurityInfo(h, windows.SE_KERNEL_OBJECT, windows.OWNER_SECURITY_INFORMATION)
+	if err != nil {
 		windows.CloseHandle(h)
+		logf("servizio di Ponte: non riesco a controllare chi è in ascolto: %v", err)
 		return 0, err
 	}
-	path, err := processPath(pid)
-	if err != nil || !strings.EqualFold(path, serviceExe()) {
+	owner, _, err := sd.Owner()
+	if err != nil || owner == nil || !(owner.IsWellKnown(windows.WinLocalSystemSid) || owner.IsWellKnown(windows.WinBuiltinAdministratorsSid)) {
 		windows.CloseHandle(h)
-		logf("servizio di Ponte: il programma in ascolto non è quello installato (%s)", path)
-		return 0, fmt.Errorf("programma in ascolto inatteso: %s", path)
+		logf("servizio di Ponte: in ascolto c'è un programma che non è il servizio (%v)", owner)
+		return 0, fmt.Errorf("programma in ascolto inatteso: %v", owner)
 	}
 	return h, nil
-}
-
-func processPath(pid uint32) (string, error) {
-	p, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
-	if err != nil {
-		return "", err
-	}
-	defer windows.CloseHandle(p)
-	var buf [windows.MAX_PATH * 2]uint16
-	n := uint32(len(buf))
-	if err := windows.QueryFullProcessImageName(p, 0, &buf[0], &n); err != nil {
-		return "", err
-	}
-	return windows.UTF16ToString(buf[:n]), nil
 }
