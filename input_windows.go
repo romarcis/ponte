@@ -155,14 +155,15 @@ func winKeyToEvdev(k *kbdllhook) uint16 {
 // ---------- capture ----------
 
 type winCapture struct {
-	ch       chan<- inputEvent
-	grab     atomic.Bool
-	cx, cy   atomic.Int32
-	moved    atomic.Uint32 // GetTickCount when Ponte last moved the pointer
-	threadID uintptr
-	done     chan struct{}
-	down     map[uint32]bool // keys held, to tell repeats from presses
-	unknown  map[uint32]bool // keys not sent, already logged
+	ch         chan<- inputEvent
+	grab       atomic.Bool
+	cx, cy     atomic.Int32
+	moved      atomic.Uint32 // GetTickCount when Ponte last moved the pointer
+	jumpLogged atomic.Bool   // a dropped jump was logged since the last switch
+	threadID   uintptr
+	done       chan struct{}
+	down       map[uint32]bool // keys held, to tell repeats from presses
+	unknown    map[uint32]bool // keys not sent, already logged
 }
 
 var activeCapture atomic.Pointer[winCapture]
@@ -232,6 +233,7 @@ func (c *winCapture) SetGrab(on bool) {
 		c.cy.Store(pt.y)
 	}
 	c.grab.Store(on)
+	c.jumpLogged.Store(false)
 	c.markMoved()
 }
 
@@ -255,6 +257,43 @@ func (c *winCapture) stale(m *msllhook) bool {
 	return d <= 0 && d > -1000
 }
 
+// maxJump is the largest motion one mouse event can plausibly make.
+const maxJump = 400
+
+// grabbedMove turns a motion into a delta for the other computer. The delta
+// is measured from where the pointer really is, not from where Ponte parked
+// it: if Windows let some motion through (it does when the hook answers
+// late), the parked pointer has moved and measuring from the park spot
+// made every later motion look like a huge jump that threw the other
+// pointer into a corner. A drifted pointer is parked again, and impossible
+// jumps are dropped.
+func (c *winCapture) grabbedMove(m *msllhook) {
+	var cur point
+	pGetCursorPos.Call(uintptr(unsafe.Pointer(&cur)))
+	cx, cy := c.cx.Load(), c.cy.Load()
+	if cur.x != cx || cur.y != cy {
+		pSetCursorPos.Call(uintptr(cx), uintptr(cy))
+	}
+	dx, dy := m.pt.x-cur.x, m.pt.y-cur.y
+	if dx == 0 && dy == 0 {
+		return
+	}
+	if abs32(dx) > maxJump || abs32(dy) > maxJump {
+		if !c.jumpLogged.Swap(true) {
+			logf("   movimento scartato: salto di %d,%d (puntatore in %d,%d, parcheggio in %d,%d)", dx, dy, cur.x, cur.y, cx, cy)
+		}
+		return
+	}
+	c.send(inputEvent{kind: evRel, x: dx, y: dy})
+}
+
+func abs32(v int32) int32 {
+	if v < 0 {
+		return -v
+	}
+	return v
+}
+
 func (c *winCapture) send(ev inputEvent) {
 	select {
 	case c.ch <- ev:
@@ -276,10 +315,7 @@ var mouseHookCB = syscall.NewCallback(func(nCode, wParam, lParam uintptr) uintpt
 			return 1
 		}
 		if grab {
-			cx, cy := c.cx.Load(), c.cy.Load()
-			if m.pt.x != cx || m.pt.y != cy {
-				c.send(inputEvent{kind: evRel, x: m.pt.x - cx, y: m.pt.y - cy})
-			}
+			c.grabbedMove(m)
 		} else {
 			c.send(inputEvent{kind: evPos, x: m.pt.x, y: m.pt.y})
 		}
