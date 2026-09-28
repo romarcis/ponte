@@ -336,7 +336,7 @@ func (s *shareCtl) enter(x, y int, center bool, why string) {
 	s.cap.SetGrab(true)
 	s.cl.send(encEnter(int(s.rx), int(s.ry)))
 	s.app.setState("active", s.cl.name, s.cl.os)
-	logf("-> passo a %s (%s)", s.cl.name, why)
+	logf("-> passo a %s (%s): qui %d,%d, là %d,%d", s.cl.name, why, x, y, int(s.rx), int(s.ry))
 }
 
 func (s *shareCtl) move(dx, dy float64) {
@@ -401,6 +401,7 @@ func (s *shareCtl) leave(warp bool, why string) {
 			y = by + 2
 		}
 		s.cap.Warp(x, y)
+		logf("   puntatore riportato in %d,%d", x, y)
 	}
 	if s.app.rippleOn() {
 		showRipple(s.app.rippleRGB())
