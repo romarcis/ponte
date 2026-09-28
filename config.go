@@ -41,7 +41,7 @@ type config struct {
 	NoClipboard   bool                   `json:"no_clipboard"`
 	NoRipple      bool                   `json:"no_ripple"`
 	Theme         string                 `json:"theme,omitempty"` // "", "light" or "dark"
-	Color         string                 `json:"color"` // accent color "#rrggbb", "" = default
+	Color         string                 `json:"color"`           // accent color "#rrggbb", "" = default
 	TrayHintShown bool                   `json:"tray_hint_shown"`
 	AdminDeclined bool                   `json:"admin_declined"` // said no to administrator rights
 	Peers         map[string]*pairedPeer `json:"peers"`
