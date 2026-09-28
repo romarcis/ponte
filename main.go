@@ -86,9 +86,7 @@ func main() {
 		background = false
 	}
 	go watchUpdates()
-	if app.cfg.Role != "" {
-		app.setRole(app.cfg.Role)
-	}
+	app.start()
 	logf("Ponte %s avviato (%s/%s)", version, runtime.GOOS, runtime.GOARCH)
 	runShell(app, url, !background, func() { serveUI(ln, app) })
 }

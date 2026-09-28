@@ -106,8 +106,7 @@ type inbox struct {
 
 func inboxDir() string { return filepath.Join(os.TempDir(), "Ponte", "incoming") }
 
-func (c *clipSync) receivedFiles(msg []byte) {
-	in := &c.in
+func (c *clipSync) receivedFiles(in *inbox, msg []byte) {
 	r := &rbuf{b: msg[1:]}
 	switch msg[0] {
 	case msgFileStart:

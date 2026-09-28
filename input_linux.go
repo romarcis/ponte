@@ -421,6 +421,8 @@ func (c *linuxCapture) read(d *evdev) {
 					if c.grabbed() {
 						ax, ay := accel(dx, dy)
 						c.send(inputEvent{kind: evRel, x: int32(math.Round(ax)), y: int32(math.Round(ay))})
+					} else {
+						c.send(inputEvent{kind: evMotion})
 					}
 					dx, dy = 0, 0
 				}

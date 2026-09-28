@@ -10,109 +10,124 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
-// App holds the state shown in the window and the running role.
+// App holds the state shown in the window and the running node.
 type App struct {
 	mu  sync.Mutex
 	cfg *config
 
-	state      string // see status.State
-	peerName   string
-	peerOS     string
-	errMsg     string
-	errHelp    string
-	code       string
-	codeFails  int
-	edgeSwitch bool
-	clipOK     bool
+	errMsg    string
+	errHelp   string
+	setupErr  bool // errMsg comes from starting: Riprova starts again
+	code      string
+	codeFails int
+	codeUntil time.Time // wrong codes: no more tries until then
 
-	share *shareCtl
-	recv  *recvCtl
+	node *node
 }
 
+// peerView is a computer of the group, as the window shows it.
 type peerView struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-	OS   string `json:"os"`
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	OS     string `json:"os"`
+	Online bool   `json:"online"`
+	Old    bool   `json:"old"` // runs an older Ponte: it needs the update
 }
 
 type status struct {
-	Name        string        `json:"name"`
-	OS          string        `json:"os"`
-	Version     string        `json:"version"`
-	Role        string        `json:"role"`
-	State       string        `json:"state"` // share: waiting, connected, active; receive: searching, connecting, connected, active; both: error, idle
-	Code        string        `json:"code"`
-	Peer        string        `json:"peer"`
-	PeerOS      string        `json:"peerOS"`
-	Edge        string        `json:"edge"`
-	EdgeSwitch  bool          `json:"edgeSwitch"`
-	Error       string        `json:"error"`
-	ErrorHelp   string        `json:"errorHelp"`
-	Found       []foundServer `json:"found"`
-	Clients     []peerView    `json:"clients"`
-	Servers     []peerView    `json:"servers"`
-	Target      string        `json:"target"`
-	Clipboard   bool          `json:"clipboard"`
-	ClipboardOK bool          `json:"clipboardOK"`
-	Ripple      bool          `json:"ripple"`
-	Color       string        `json:"color"`
-	Update      string        `json:"update"` // newer version on GitHub
+	ID          string          `json:"id"`
+	Name        string          `json:"name"`
+	OS          string          `json:"os"`
+	Version     string          `json:"version"`
+	State       string          `json:"state"`  // starting, ready, controlling, controlled, error
+	Target      string          `json:"target"` // controlling: the computer's ID
+	By          string          `json:"by"`     // controlled: the computer's ID
+	Code        string          `json:"code"`
+	EdgeSwitch  bool            `json:"edgeSwitch"`
+	Error       string          `json:"error"`
+	ErrorHelp   string          `json:"errorHelp"`
+	Found       []foundPeer     `json:"found"` // on the network, not in the group
+	Peers       []peerView      `json:"peers"`
+	Layout      map[string]cell `json:"layout"`
+	Clipboard   bool            `json:"clipboard"`
+	ClipboardOK bool            `json:"clipboardOK"`
+	Ripple      bool            `json:"ripple"`
+	Color       string          `json:"color"`
+	Update      string          `json:"update"` // newer version on GitHub
 }
 
 // version is set at build time (build.sh, from the release tag).
 var version = "dev"
 
 func newApp() *App {
-	a := &App{cfg: loadConfig(), state: "idle"}
+	a := &App{cfg: loadConfig(), code: newPairingCode()}
 	a.cfg.save()
 	return a
 }
 
 func (a *App) status() status {
 	a.mu.Lock()
-	defer a.mu.Unlock()
+	n := a.node
 	s := status{
-		Name: a.cfg.Name, OS: runtime.GOOS, Version: version,
-		Role: a.cfg.Role, State: a.state, Code: a.code,
-		Peer: a.peerName, PeerOS: a.peerOS, Edge: a.cfg.Edge, EdgeSwitch: a.edgeSwitch,
-		Error: a.errMsg, ErrorHelp: a.errHelp, Target: a.cfg.LastServer,
-		Found: []foundServer{}, Clients: []peerView{}, Servers: []peerView{},
-		Clipboard: !a.cfg.NoClipboard, ClipboardOK: a.clipOK, Ripple: !a.cfg.NoRipple, Color: a.cfg.Color, Update: updateAvailable(),
+		ID: a.cfg.id(), Name: a.cfg.Name, OS: runtime.GOOS, Version: version, State: "starting",
+		Code: a.code, Error: a.errMsg, ErrorHelp: a.errHelp,
+		Found: []foundPeer{}, Peers: []peerView{}, Layout: a.cfg.Layout.clone().Pos,
+		Clipboard: !a.cfg.NoClipboard, Ripple: !a.cfg.NoRipple, Color: a.cfg.Color, Update: updateAvailable(),
 	}
-	for id, c := range a.cfg.Clients {
-		s.Clients = append(s.Clients, peerView{id, c.Name, c.OS})
+	for id, p := range a.cfg.Peers {
+		s.Peers = append(s.Peers, peerView{ID: id, Name: p.Name, OS: p.OS})
 	}
-	for id, c := range a.cfg.Servers {
-		s.Servers = append(s.Servers, peerView{id, c.Name, c.OS})
+	a.mu.Unlock()
+	sort.Slice(s.Peers, func(i, j int) bool { return s.Peers[i].Name < s.Peers[j].Name })
+	if n == nil {
+		if s.Error != "" {
+			s.State = "error"
+		}
+		return s
 	}
-	sort.Slice(s.Clients, func(i, j int) bool { return s.Clients[i].Name < s.Clients[j].Name })
-	sort.Slice(s.Servers, func(i, j int) bool { return s.Servers[i].Name < s.Servers[j].Name })
-	if a.recv != nil && a.recv.disc != nil {
-		for _, f := range a.recv.disc.list() {
-			_, f.Paired = a.cfg.Servers[f.ID]
+	v := n.snapshot()
+	s.State, s.Target, s.By = "ready", v.target, v.by
+	switch {
+	case v.by != "":
+		s.State = "controlled"
+	case v.target != "":
+		s.State = "controlling"
+	}
+	s.EdgeSwitch, s.ClipboardOK = n.edgeOK, n.clip.Available()
+	old := map[string]bool{}
+	if n.disc != nil {
+		for _, f := range n.disc.list(s.ID) {
+			if _, paired := s.Layout[f.ID]; paired {
+				old[f.ID] = f.Old
+				continue
+			}
 			s.Found = append(s.Found, f)
 		}
 	}
-	return s
-}
-
-func (a *App) setState(state, peer, peerOS string) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a.state = state
-	a.peerName = peer
-	a.peerOS = peerOS
-	if state == "connected" || state == "active" {
-		a.errMsg, a.errHelp = "", ""
+	for i := range s.Peers {
+		p := &s.Peers[i]
+		p.Online = v.online[p.ID]
+		p.Old = !p.Online && (old[p.ID] || v.errs[p.ID] == "old")
 	}
+	return s
 }
 
 func (a *App) setError(msg, help string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	a.errMsg, a.errHelp = msg, help
+	a.errMsg, a.errHelp, a.setupErr = msg, help, false
+}
+
+func (a *App) setSetupError(err error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.errMsg, a.errHelp, a.setupErr = err.Error(), "", true
+	if se, ok := err.(*setupError); ok {
+		a.errHelp = se.help
+	}
 }
 
 func (a *App) clearError() { a.setError("", "") }
@@ -122,73 +137,21 @@ func newPairingCode() string {
 	return fmt.Sprintf("%06d", n.Int64())
 }
 
-// setRole stops whatever runs now and starts the new role.
-func (a *App) setRole(role string) error {
-	a.mu.Lock()
-	share, recv := a.share, a.recv
-	a.share, a.recv = nil, nil
-	a.mu.Unlock()
-	if share != nil {
-		share.Stop()
-	}
-	if recv != nil {
-		recv.Stop()
-	}
-
-	a.mu.Lock()
-	a.cfg.Role = role
-	a.cfg.save()
-	a.state, a.peerName, a.peerOS, a.errMsg, a.errHelp = "idle", "", "", "", ""
-	a.code = ""
-	a.mu.Unlock()
-
-	var err error
-	switch role {
-	case "share":
-		a.mu.Lock()
-		a.code = newPairingCode()
-		a.codeFails = 0
-		a.mu.Unlock()
-		var s *shareCtl
-		if s, err = startShare(a); err == nil {
-			a.mu.Lock()
-			a.share = s
-			a.edgeSwitch = s.cap.EdgeSwitch()
-			a.clipOK = s.clip.Available()
-			a.mu.Unlock()
-		}
-	case "receive":
-		var r *recvCtl
-		if r, err = startRecv(a); err == nil {
-			a.mu.Lock()
-			a.recv = r
-			a.clipOK = r.clip.Available()
-			a.mu.Unlock()
-		}
-	}
+// start starts (again) the node: the connections to the other computers
+// and this computer's mouse and keyboard.
+func (a *App) start() error {
+	a.shutdown()
+	a.clearError()
+	n, err := startNode(a)
 	if err != nil {
-		logf("avvio ruolo %s: %v", role, err)
-		a.mu.Lock()
-		a.state = "error"
-		a.errMsg = err.Error()
-		if se, ok := err.(*setupError); ok {
-			a.errHelp = se.help
-		}
-		a.mu.Unlock()
-	}
-	return err
-}
-
-func (a *App) setEdge(edge string) {
-	switch edge {
-	case "left", "right", "top", "bottom":
-	default:
-		return
+		logf("avvio: %v", err)
+		a.setSetupError(err)
+		return err
 	}
 	a.mu.Lock()
-	a.cfg.Edge = edge
-	a.cfg.save()
+	a.node = n
 	a.mu.Unlock()
+	return nil
 }
 
 func (a *App) clipboardOn() bool {
@@ -249,12 +212,6 @@ func (a *App) rippleRGB() uint32 {
 	return defaultRippleColor
 }
 
-func (a *App) edge() string {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	return a.cfg.Edge
-}
-
 func (a *App) setName(name string) {
 	if name == "" || len(name) > 60 {
 		return
@@ -277,25 +234,26 @@ func (a *App) deviceID() []byte {
 	return a.cfg.DeviceID
 }
 
-// lookupSecret is used by the sharing side to authenticate a client.
+// lookupSecret authenticates a computer that connects: with the pairing
+// code shown here, or with the key agreed when pairing.
 func (a *App) lookupSecret(mode byte, clientID []byte) ([]byte, bool) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if mode == authModeCode {
-		if a.code == "" {
+		if a.code == "" || time.Now().Before(a.codeUntil) {
 			return nil, false
 		}
 		return []byte(a.code), true
 	}
-	c, ok := a.cfg.Clients[hex.EncodeToString(clientID)]
+	p, ok := a.cfg.Peers[hex.EncodeToString(clientID)]
 	if !ok {
 		return nil, false
 	}
-	return c.Key, true
+	return p.Key, true
 }
 
-// codeFailed changes the pairing code after too many wrong attempts, so it
-// cannot be guessed.
+// codeFailed changes the pairing code after too many wrong attempts, and
+// pauses the tries, so it cannot be guessed.
 func (a *App) codeFailed() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -303,64 +261,169 @@ func (a *App) codeFailed() {
 	if a.codeFails >= 5 {
 		a.code = newPairingCode()
 		a.codeFails = 0
+		a.codeUntil = time.Now().Add(10 * time.Second)
 	}
 }
 
-func (a *App) pairClient(id, name, os string, key []byte) {
+func (a *App) pairPeer(id, name, os, addr string, key []byte) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	a.cfg.Clients[id] = &pairedClient{Name: name, OS: os, Key: key}
+	a.cfg.Peers[id] = &pairedPeer{Name: name, OS: os, Key: key, Addr: addr}
+	a.cfg.Layout.place(id, a.cfg.id())
 	a.cfg.save()
 	a.code = newPairingCode()
 	a.codeFails = 0
 }
 
-func (a *App) updateClient(id, name, os string) {
+func (a *App) updatePeer(id, name, os, addr string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if c, ok := a.cfg.Clients[id]; ok && (c.Name != name || c.OS != os) {
-		c.Name, c.OS = name, os
+	if p, ok := a.cfg.Peers[id]; ok && (p.Name != name || p.OS != os || (addr != "" && p.Addr != addr)) {
+		p.Name, p.OS = name, os
+		if addr != "" {
+			p.Addr = addr
+		}
 		a.cfg.save()
+	}
+}
+
+func (a *App) removePeer(id string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if _, ok := a.cfg.Peers[id]; !ok {
+		return
+	}
+	delete(a.cfg.Peers, id)
+	delete(a.cfg.Layout.Pos, id)
+	a.cfg.Layout.Stamp = time.Now().UnixNano()
+	a.cfg.save()
+}
+
+func (a *App) peerIDs() []string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return sortedKeys(a.cfg.Peers)
+}
+
+func (a *App) peerKey(id string) []byte {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if p, ok := a.cfg.Peers[id]; ok {
+		return p.Key
+	}
+	return nil
+}
+
+func (a *App) peerAddr(id string) string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if p, ok := a.cfg.Peers[id]; ok {
+		return p.Addr
+	}
+	return ""
+}
+
+func (a *App) peerName(id string) string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if p, ok := a.cfg.Peers[id]; ok {
+		return p.Name
+	}
+	return id
+}
+
+// ---------- screen map ----------
+
+func (a *App) layoutCopy() layout {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.cfg.Layout.clone()
+}
+
+func (a *App) layoutNeighbor(id, dir string) (string, bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.cfg.Layout.neighbor(id, dir)
+}
+
+func (a *App) layoutDir(from, to string) (string, bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.cfg.Layout.dirTo(from, to)
+}
+
+func (a *App) layoutOrder() []string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.cfg.Layout.order()
+}
+
+// touchLayout marks the map as changed now, so the other computers take
+// it: after this one placed a computer that just paired with it.
+func (a *App) touchLayout() layout {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.cfg.Layout.Stamp = time.Now().UnixNano()
+	a.cfg.save()
+	return a.cfg.Layout.clone()
+}
+
+// adoptLayout takes the map of another computer, keeping only the
+// computers of this group.
+func (a *App) adoptLayout(l layout, self string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	l = l.clone()
+	l.keep(append(sortedKeys(a.cfg.Peers), self), self)
+	a.cfg.Layout = l
+	a.cfg.save()
+}
+
+// moveScreen puts a computer on another cell of the map, from the window,
+// and tells the others.
+func (a *App) moveScreen(id string, c cell) {
+	a.mu.Lock()
+	if _, ok := a.cfg.Layout.Pos[id]; !ok {
+		a.mu.Unlock()
+		return
+	}
+	a.cfg.Layout.move(id, c)
+	a.cfg.Layout.Stamp = time.Now().UnixNano()
+	a.cfg.save()
+	l := a.cfg.Layout.clone()
+	n := a.node
+	a.mu.Unlock()
+	if n != nil {
+		n.broadcast(encLayout(l))
 	}
 }
 
 func (a *App) forget(id string) {
 	a.mu.Lock()
-	delete(a.cfg.Clients, id)
-	delete(a.cfg.Servers, id)
-	if a.cfg.LastServer == id {
-		a.cfg.LastServer = ""
-	}
-	a.cfg.save()
-	share, recv := a.share, a.recv
+	n := a.node
 	a.mu.Unlock()
-	if share != nil {
-		share.drop(id)
-	}
-	if recv != nil {
-		recv.drop(id)
+	if n != nil {
+		n.forget(id)
+	} else {
+		a.removePeer(id)
 	}
 }
 
 func (a *App) connect(id, addr, code string) {
 	a.mu.Lock()
-	r := a.recv
+	n := a.node
 	a.mu.Unlock()
-	if r != nil {
-		a.clearError()
-		r.request(connectReq{id: id, addr: addr, code: code})
+	if n != nil {
+		n.pair(id, addr, code)
 	}
 }
 
 func (a *App) shutdown() {
 	a.mu.Lock()
-	share, recv := a.share, a.recv
-	a.share, a.recv = nil, nil
+	n := a.node
+	a.node = nil
 	a.mu.Unlock()
-	if share != nil {
-		share.Stop()
-	}
-	if recv != nil {
-		recv.Stop()
+	if n != nil {
+		n.Stop()
 	}
 }

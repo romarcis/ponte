@@ -6,8 +6,9 @@ import (
 	"time"
 )
 
-// Copied text travels to the other computer: each side watches its own
-// clipboard and sends new text; received text is put on the local clipboard.
+// Copied text travels to the other computers: each one watches its own
+// clipboard and sends new text to all; received text is put on the local
+// clipboard.
 
 const maxClipboard = 1 << 20
 
@@ -70,9 +71,13 @@ func startClipSync(app *App, cb clipboard, send func([]byte), stop <-chan struct
 	return c
 }
 
-func (c *clipSync) received(msg []byte) {
+func (c *clipSync) received(msg []byte) { c.receivedIn(&c.in, msg) }
+
+// receivedIn handles a message from one computer; in holds the files it is
+// sending.
+func (c *clipSync) receivedIn(in *inbox, msg []byte) {
 	if msg[0] != msgClipboard {
-		c.receivedFiles(msg)
+		c.receivedFiles(in, msg)
 		return
 	}
 	r := &rbuf{b: msg[1:]}

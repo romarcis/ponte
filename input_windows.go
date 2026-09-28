@@ -312,6 +312,12 @@ var mouseHookCB = syscall.NewCallback(func(nCode, wParam, lParam uintptr) uintpt
 	}
 	m := (*msllhook)(unsafe.Pointer(lParam))
 	grab := c.grab.Load()
+	if m.flags&llmhfInjected != 0 {
+		// Replayed by Ponte (another computer controls this one) or by
+		// another program: not this computer's mouse.
+		r, _, _ := pCallNextHookEx.Call(0, nCode, wParam, lParam)
+		return r
+	}
 	switch wParam {
 	case wmMouseMove:
 		if c.stale(m) {
@@ -321,6 +327,7 @@ var mouseHookCB = syscall.NewCallback(func(nCode, wParam, lParam uintptr) uintpt
 			c.grabbedMove(m)
 		} else {
 			c.send(inputEvent{kind: evPos, x: m.pt.x, y: m.pt.y})
+			c.send(inputEvent{kind: evMotion})
 		}
 	case wmLButtonDown, wmLButtonUp:
 		c.send(inputEvent{kind: evButton, code: btnLeft, val: b2i(wParam == wmLButtonDown)})

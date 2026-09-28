@@ -17,9 +17,12 @@ const (
 	evButton = 3
 	evWheel  = 4
 	evKey    = 5
+	// evMotion: the physical mouse moved while not grabbed. A computer
+	// being controlled from another one takes its mouse back on it.
+	evMotion = 6
 )
 
-const keyScrollLock = 70 // hotkey: jump between the two computers
+const keyScrollLock = 70 // hotkey: jump to the next computer
 
 const (
 	keyEsc       = 1
@@ -29,11 +32,12 @@ const (
 	keyRightAlt  = 100
 )
 
-// peerTimeout is how long the other computer may stay silent before it is
-// considered gone (it answers a ping every second).
+// peerTimeout is how long another computer may stay silent before it is
+// considered gone (each side pings every second).
 const peerTimeout = 3 * time.Second
 
-// inputCapture reads the physical mouse and keyboard of the sharing computer.
+// inputCapture reads this computer's physical mouse and keyboard; what
+// Ponte itself replays is not reported.
 type inputCapture interface {
 	Start(ch chan<- inputEvent) error
 	Stop()
@@ -46,7 +50,7 @@ type inputCapture interface {
 	Warp(x, y int)
 }
 
-// inputInjector replays input on the controlled computer.
+// inputInjector replays input when another computer controls this one.
 type inputInjector interface {
 	Start() error
 	Close()
