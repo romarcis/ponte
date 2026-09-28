@@ -287,6 +287,7 @@ func (r *recvCtl) session(req *connectReq) (err error) {
 			x, y := rb.i32(), rb.i32()
 			r.app.setState("active", name, peerOS)
 			logf("-> %s usa questo computer", name)
+			go logCursor()
 			r.inj.MouseAbs(int(x), int(y))
 			if r.app.rippleOn() {
 				showRipple(int(x), int(y), r.app.rippleRGB())

@@ -5,6 +5,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"syscall"
+	"time"
 	"unsafe"
 )
 
@@ -24,6 +25,7 @@ var (
 	pSetCursorPos        = user32.NewProc("SetCursorPos")
 	pGetSystemMetrics    = user32.NewProc("GetSystemMetrics")
 	pSendInput           = user32.NewProc("SendInput")
+	pGetCursorInfo       = user32.NewProc("GetCursorInfo")
 	pSetDpiAwareCtx      = user32.NewProc("SetProcessDpiAwarenessContext")
 	pSetDPIAware         = user32.NewProc("SetProcessDPIAware")
 	pGetCurrentThreadId  = kernel32.NewProc("GetCurrentThreadId")
@@ -356,7 +358,7 @@ func (w *winInjector) ScreenSize() (int, int) {
 
 func sendMouse(in mouseInput) {
 	in.typ = inputMouse
-	pSendInput.Call(1, uintptr(unsafe.Pointer(&in)), unsafe.Sizeof(in))
+	sendInput(unsafe.Pointer(&in), unsafe.Sizeof(in))
 }
 
 func (w *winInjector) MouseAbs(x, y int) {
@@ -422,5 +424,38 @@ func (w *winInjector) Key(code uint16, state uint8) {
 	if state == 0 {
 		in.flags |= keyUp
 	}
-	pSendInput.Call(1, uintptr(unsafe.Pointer(&in)), unsafe.Sizeof(in))
+	sendInput(unsafe.Pointer(&in), unsafe.Sizeof(in))
+}
+
+var inputBlocked atomic.Bool
+
+// sendInput replays one event. Windows refuses it on the lock screen and
+// while an administrator prompt is shown; the log tells when.
+func sendInput(in unsafe.Pointer, size uintptr) {
+	if n, _, _ := pSendInput.Call(1, uintptr(in), size); n == 0 {
+		if !inputBlocked.Swap(true) {
+			logf("Windows non accetta il mouse e la tastiera di Ponte (schermata di blocco o richiesta di amministratore?)")
+		}
+	} else if inputBlocked.Swap(false) {
+		logf("Windows accetta di nuovo il mouse e la tastiera di Ponte")
+	}
+}
+
+// logCursor writes to the log whether Windows shows the pointer, a moment
+// after it arrived from the other computer.
+func logCursor() {
+	time.Sleep(300 * time.Millisecond)
+	var ci struct {
+		size, flags uint32
+		cursor      uintptr
+		pt          point
+	}
+	ci.size = uint32(unsafe.Sizeof(ci))
+	pGetCursorInfo.Call(uintptr(unsafe.Pointer(&ci)))
+	state := map[uint32]string{0: "nascosto", 1: "visibile", 2: "nascosto da Windows (tocco o penna)"}[ci.flags]
+	mouse := "no"
+	if metric(19) != 0 { // SM_MOUSEPRESENT
+		mouse = "sì"
+	}
+	logf("   puntatore %s in %d,%d; mouse fisico collegato: %s", state, ci.pt.x, ci.pt.y, mouse)
 }
