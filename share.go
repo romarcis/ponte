@@ -23,12 +23,13 @@ type shareCtl struct {
 	stop   chan struct{}
 	done   chan struct{}
 
-	cl      *peer
-	remote  bool
-	rx, ry  float64
-	local   map[uint16]time.Time // keys and buttons (1000+b) held on this computer
-	held    map[uint16]bool      // keys held on the other computer
-	heldBtn map[uint8]bool       // buttons held on the other computer
+	cl       *peer
+	remote   bool
+	switched time.Time // last time control moved between the computers
+	rx, ry   float64
+	local    map[uint16]time.Time // keys and buttons (1000+b) held on this computer
+	held     map[uint16]bool      // keys held on the other computer
+	heldBtn  map[uint8]bool       // buttons held on the other computer
 }
 
 type peer struct {
@@ -244,7 +245,7 @@ func (s *shareCtl) heldLocally() bool {
 func (s *shareCtl) handle(ev inputEvent) {
 	switch ev.kind {
 	case evPos:
-		if !s.remote && s.cl != nil && s.atEdge(int(ev.x), int(ev.y)) && !s.heldLocally() {
+		if !s.remote && s.cl != nil && s.atEdge(int(ev.x), int(ev.y)) && !s.heldLocally() && s.settled() {
 			s.enter(int(ev.x), int(ev.y), false, "bordo dello schermo")
 		}
 	case evRel:
@@ -324,15 +325,16 @@ func (s *shareCtl) enter(x, y int, center bool, why string) {
 	case center:
 		s.rx, s.ry = w/2, h/2
 	case s.app.edge() == "right":
-		s.rx, s.ry = 0, fy*h
+		s.rx, s.ry = 0, awayFromCorners(fy*h, h)
 	case s.app.edge() == "left":
-		s.rx, s.ry = w-1, fy*h
+		s.rx, s.ry = w-1, awayFromCorners(fy*h, h)
 	case s.app.edge() == "bottom":
-		s.rx, s.ry = fx*w, 0
+		s.rx, s.ry = awayFromCorners(fx*w, w), 0
 	case s.app.edge() == "top":
-		s.rx, s.ry = fx*w, h-1
+		s.rx, s.ry = awayFromCorners(fx*w, w), h-1
 	}
 	s.remote = true
+	s.switched = time.Now()
 	s.cap.SetGrab(true)
 	s.cl.send(encEnter(int(s.rx), int(s.ry)))
 	s.app.setState("active", s.cl.name, s.cl.os)
@@ -354,7 +356,7 @@ func (s *shareCtl) move(dx, dy float64) {
 	case "top":
 		out = s.ry > h-1
 	}
-	if out && len(s.heldBtn) == 0 && s.cap.EdgeSwitch() {
+	if out && len(s.heldBtn) == 0 && s.cap.EdgeSwitch() && s.settled() {
 		s.leave(true, "bordo dello schermo")
 		return
 	}
@@ -370,6 +372,7 @@ func (s *shareCtl) leave(warp bool, why string) {
 		return
 	}
 	s.remote = false
+	s.switched = time.Now()
 	logf("<- torno a questo computer (%s)", why)
 	if s.cl != nil {
 		for k := range s.held {
@@ -388,8 +391,8 @@ func (s *shareCtl) leave(warp bool, why string) {
 		bx, by, bw, bh := s.cap.Bounds()
 		fx := s.rx / float64(s.cl.w)
 		fy := s.ry / float64(s.cl.h)
-		x := bx + int(fx*float64(bw))
-		y := by + int(fy*float64(bh))
+		x := bx + int(awayFromCorners(fx*float64(bw), float64(bw)))
+		y := by + int(awayFromCorners(fy*float64(bh), float64(bh)))
 		switch s.app.edge() {
 		case "right":
 			x = bx + bw - 3
@@ -406,4 +409,23 @@ func (s *shareCtl) leave(warp bool, why string) {
 	if s.app.rippleOn() {
 		showRipple(s.app.rippleRGB())
 	}
+}
+
+// switchGuard is how long after a switch the screen edge cannot switch
+// again. Without it a pointer pushed against the edge bounced back and forth
+// between the computers several times a second.
+var switchGuard = 300 * time.Millisecond
+
+func (s *shareCtl) settled() bool { return time.Since(s.switched) >= switchGuard }
+
+// awayFromCorners keeps a coordinate along the shared edge a little inside
+// the screen, so the pointer never lands exactly in a corner, where it is
+// hard to see (at the bottom only its tip is on screen) and where the two
+// screens, of different sizes, meet their ends.
+func awayFromCorners(v, size float64) float64 {
+	m := max(16, size*0.03)
+	if size <= 2*m {
+		return size / 2
+	}
+	return min(max(v, m), size-1-m)
 }
