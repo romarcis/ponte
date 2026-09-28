@@ -16,18 +16,20 @@ var (
 	user32   = syscall.NewLazyDLL("user32.dll")
 	kernel32 = syscall.NewLazyDLL("kernel32.dll")
 
-	pSetWindowsHookEx    = user32.NewProc("SetWindowsHookExW")
-	pUnhookWindowsHookEx = user32.NewProc("UnhookWindowsHookEx")
-	pCallNextHookEx      = user32.NewProc("CallNextHookEx")
-	pGetMessage          = user32.NewProc("GetMessageW")
-	pPostThreadMessage   = user32.NewProc("PostThreadMessageW")
-	pSetCursorPos        = user32.NewProc("SetCursorPos")
-	pGetSystemMetrics    = user32.NewProc("GetSystemMetrics")
-	pSendInput           = user32.NewProc("SendInput")
-	pSetDpiAwareCtx      = user32.NewProc("SetProcessDpiAwarenessContext")
-	pSetDPIAware         = user32.NewProc("SetProcessDPIAware")
-	pGetCurrentThreadId  = kernel32.NewProc("GetCurrentThreadId")
-	pGetModuleHandle     = kernel32.NewProc("GetModuleHandleW")
+	pSetWindowsHookEx     = user32.NewProc("SetWindowsHookExW")
+	pUnhookWindowsHookEx  = user32.NewProc("UnhookWindowsHookEx")
+	pCallNextHookEx       = user32.NewProc("CallNextHookEx")
+	pGetMessage           = user32.NewProc("GetMessageW")
+	pPostThreadMessage    = user32.NewProc("PostThreadMessageW")
+	pSetCursorPos         = user32.NewProc("SetCursorPos")
+	pGetSystemMetrics     = user32.NewProc("GetSystemMetrics")
+	pGetCursorInfo        = user32.NewProc("GetCursorInfo")
+	pSystemParametersInfo = user32.NewProc("SystemParametersInfoW")
+	pSendInput            = user32.NewProc("SendInput")
+	pSetDpiAwareCtx       = user32.NewProc("SetProcessDpiAwarenessContext")
+	pSetDPIAware          = user32.NewProc("SetProcessDPIAware")
+	pGetCurrentThreadId   = kernel32.NewProc("GetCurrentThreadId")
+	pGetModuleHandle      = kernel32.NewProc("GetModuleHandleW")
 )
 
 const (
@@ -55,6 +57,8 @@ const (
 	llkhfInjected = 0x10
 	llmhfInjected = 0x01
 
+	smCXScreen  = 0
+	smCYScreen  = 1
 	smXVirtual  = 76
 	smYVirtual  = 77
 	smCXVirtual = 78
@@ -197,11 +201,16 @@ func (c *winCapture) EdgeSwitch() bool             { return true }
 
 func (c *winCapture) SetGrab(on bool) {
 	if on {
-		// Park the hidden pointer mid-screen so motion never hits an edge.
-		x, y, w, h := virtualScreen()
-		c.cx.Store(int32(x + w/2))
-		c.cy.Store(int32(y + h/2))
-		pSetCursorPos.Call(uintptr(x+w/2), uintptr(y+h/2))
+		// Park the pointer mid-screen so motion never hits an edge. The
+		// middle of the main monitor is always a real place: the middle of
+		// all monitors together may not be (screens of different sizes), and
+		// Windows would then put the pointer elsewhere and every movement
+		// would look like a jump.
+		pSetCursorPos.Call(uintptr(metric(smCXScreen)/2), uintptr(metric(smCYScreen)/2))
+		var pt point
+		pGetCursorPos.Call(uintptr(unsafe.Pointer(&pt)))
+		c.cx.Store(pt.x)
+		c.cy.Store(pt.y)
 	}
 	c.grab.Store(on)
 }
@@ -341,13 +350,81 @@ type keybdInput struct {
 }
 
 type winInjector struct {
-	mu sync.Mutex
+	mu     sync.Mutex
+	forced bool      // MouseKeys turned on by Ponte to show the pointer
+	saved  mouseKeys // the user's MouseKeys settings, restored afterwards
 }
 
 func newInjector() inputInjector { return &winInjector{} }
 
 func (w *winInjector) Start() error { return nil }
-func (w *winInjector) Close()       {}
+func (w *winInjector) Close()       { w.ShowCursor(false) }
+
+// MOUSEKEYS
+type mouseKeys struct {
+	size, flags, maxSpeed, timeToMax, ctrlSpeed, res1, res2 uint32
+}
+
+const (
+	spiGetMouseKeys  = 0x0036
+	spiSetMouseKeys  = 0x0037
+	mkfMouseKeysOn   = 0x01
+	mkfAvailable     = 0x02
+	smMousePresent   = 19
+	cursorSuppressed = 0x02
+)
+
+// cursorInfo is CURSORINFO.
+type cursorInfo struct {
+	size, flags uint32
+	cursor      uintptr
+	pt          point
+}
+
+// pointerHidden tells whether Windows is not drawing the pointer: it does
+// that when no mouse is connected (a PC whose only mouse is the one on the
+// other computer) or after touch input.
+func pointerHidden() bool {
+	if metric(smMousePresent) == 0 {
+		return true
+	}
+	ci := cursorInfo{}
+	ci.size = uint32(unsafe.Sizeof(ci))
+	if r, _, _ := pGetCursorInfo.Call(uintptr(unsafe.Pointer(&ci))); r != 0 {
+		return ci.flags&cursorSuppressed != 0
+	}
+	return false
+}
+
+// ShowCursor makes the pointer visible while this computer is controlled.
+// Windows shows it only if it believes a mouse is present, so Ponte turns on
+// MouseKeys (the accessibility option that moves the pointer with the
+// numeric keypad) for as long as it is needed, the way Synergy and Barrier
+// do, and then puts the user's setting back. The change is not saved, so a
+// crash undoes it at the next sign-in.
+func (w *winInjector) ShowCursor(on bool) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if on == w.forced || (on && !pointerHidden()) {
+		return
+	}
+	if on {
+		w.saved = mouseKeys{}
+		w.saved.size = uint32(unsafe.Sizeof(w.saved))
+		if r, _, _ := pSystemParametersInfo.Call(spiGetMouseKeys, uintptr(w.saved.size), uintptr(unsafe.Pointer(&w.saved)), 0); r == 0 {
+			return
+		}
+		mk := w.saved
+		mk.flags |= mkfMouseKeysOn | mkfAvailable
+		if r, _, _ := pSystemParametersInfo.Call(spiSetMouseKeys, uintptr(mk.size), uintptr(unsafe.Pointer(&mk)), 0); r != 0 {
+			w.forced = true
+			logf("puntatore nascosto da Windows (nessun mouse collegato?): lo mostro con i Tasti del mouse")
+		}
+		return
+	}
+	pSystemParametersInfo.Call(spiSetMouseKeys, uintptr(w.saved.size), uintptr(unsafe.Pointer(&w.saved)), 0)
+	w.forced = false
+}
 
 func (w *winInjector) ScreenSize() (int, int) {
 	_, _, sw, sh := virtualScreen()

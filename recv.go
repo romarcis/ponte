@@ -262,6 +262,9 @@ func (r *recvCtl) session(req *connectReq) (err error) {
 		}
 		clear(keys)
 		clear(btns)
+		if cs, ok := r.inj.(cursorShower); ok {
+			cs.ShowCursor(false)
+		}
 	}
 	defer release()
 
@@ -287,6 +290,9 @@ func (r *recvCtl) session(req *connectReq) (err error) {
 			x, y := rb.i32(), rb.i32()
 			r.app.setState("active", name, peerOS)
 			logf("-> %s usa questo computer", name)
+			if cs, ok := r.inj.(cursorShower); ok {
+				cs.ShowCursor(true)
+			}
 			r.inj.MouseAbs(int(x), int(y))
 			if r.app.rippleOn() {
 				showRipple(int(x), int(y), r.app.rippleRGB())

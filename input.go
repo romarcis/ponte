@@ -57,6 +57,12 @@ type inputInjector interface {
 	Key(code uint16, state uint8)
 }
 
+// cursorShower is an injector that can make the pointer visible while this
+// computer is being controlled. Windows hides it when no mouse is plugged in.
+type cursorShower interface {
+	ShowCursor(on bool)
+}
+
 // setupError is a problem the user can fix; help explains how.
 type setupError struct {
 	msg  string

@@ -35,6 +35,17 @@ func (f *fakeInjector) MouseAbs(x, y int)      { f.add(fmt.Sprintf("mouse %d %d"
 func (f *fakeInjector) Button(b uint8, d bool) { f.add(fmt.Sprintf("button %d %v", b, d)) }
 func (f *fakeInjector) Wheel(a uint8, d int)   { f.add(fmt.Sprintf("wheel %d %d", a, d)) }
 func (f *fakeInjector) Key(c uint16, s uint8)  { f.add(fmt.Sprintf("key %d %d", c, s)) }
+func (f *fakeInjector) ShowCursor(on bool)     { f.add(fmt.Sprintf("cursor %v", on)) }
+func (f *fakeInjector) has(s string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, l := range f.log {
+		if l == s {
+			return true
+		}
+	}
+	return false
+}
 func (f *fakeInjector) last() string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -140,6 +151,9 @@ func TestEndToEnd(t *testing.T) {
 		t.Fatal("server should grab input")
 	}
 	waitFor(t, "client active", func() bool { return cli.status().State == "active" })
+	if !inj.has("cursor true") {
+		t.Fatal("pointer not made visible on the controlled computer")
+	}
 
 	cap.ch <- inputEvent{kind: evRel, x: 100, y: -50}
 	waitFor(t, "move", func() bool { return inj.last() == "mouse 100 400" })
@@ -169,6 +183,9 @@ func TestEndToEnd(t *testing.T) {
 		t.Fatalf("warp = %v", cap.warp)
 	}
 	waitFor(t, "client back to connected", func() bool { return cli.status().State == "connected" })
+	if inj.last() != "cursor false" {
+		t.Fatalf("pointer visibility not given back: %q", inj.last())
+	}
 
 	// Ctrl+Alt+Esc is the emergency way back.
 	cap.ch <- inputEvent{kind: evKey, code: keyScrollLock, val: 0}
