@@ -212,6 +212,7 @@ kbd{display:inline-block;font-family:inherit;font-weight:600;font-size:12.5px;li
       <button class="iconbtn" id="menubtn" title="Impostazioni" style="background:var(--card);box-shadow:var(--shadow);width:36px;height:36px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg></button>
       <div class="pop" id="pop">
         <label id="autostart"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v9M6.3 7.3a8 8 0 1 0 11.4 0"/></svg>Avvia con il computer<span class="switch" id="autosw"></span></label>
+        <label id="adminstart" title="Serve per usare con Ponte le app avviate come amministratore, come FanControl o PC Manager. Windows chiede una conferma la prima volta."><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l7 3v5c0 5-3 8.5-7 10-4-1.5-7-5-7-10V6l7-3z"/></svg>Avvia come amministratore<span class="switch" id="adminsw"></span></label>
         <label id="clipboard"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9 4h6v3H9zM9 12h6M9 16h4"/></svg>Condividi il testo copiato<span class="switch" id="clipsw"></span></label>
         <label id="ripple"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="2"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="10"/></svg>Cerchi intorno al puntatore a ogni passaggio<span class="switch" id="ripplesw"></span></label>
         <div class="colors" id="colors"><span>Colore di Ponte e dei cerchi</span>
@@ -363,6 +364,8 @@ function render() {
   set("update", S.update ? `<div class="alert news">${icon.info}<div style="flex:1"><b>È disponibile Ponte ${esc(S.update)}</b><div class="help">Questo computer ha la versione ${esc(S.version)}. Ponte si riavvia da solo in pochi secondi; aggiorna anche l'altro computer.</div>
     <div class="acts"><button class="btn small" id="doupdate">Aggiorna e riavvia</button></div></div></div>` : "");
   $("#autosw").classList.toggle("on", S.autostart);
+  $("#adminstart").hidden = S.os !== "windows";
+  $("#adminsw").classList.toggle("on", S.adminStart);
   $("#ver").textContent = S.version === "dev" ? "dev" : "v" + S.version;
   $("#clipsw").classList.toggle("on", S.clipboard);
   $("#ripplesw").classList.toggle("on", S.ripple);
@@ -501,6 +504,15 @@ document.addEventListener("click", async e => {
     else openCode(f);
   }
   else if (t.id === "menubtn") $("#pop").classList.toggle("open");
+  else if (t.id === "adminstart") {
+    e.preventDefault();
+    const on = !S.adminStart;
+    toast(on ? "Conferma la richiesta di Windows su questo computer…" : "Disattivo l'avvio come amministratore…");
+    const r = await api("/api/adminstart", {on: on ? "1" : "0"});
+    if (r.error) toast("Non riuscito: " + r.error);
+    else if (r.restart) toast("Ponte si riavvia come amministratore…");
+    else { S = r; render(); toast(on ? "Ponte partirà come amministratore" : "Ponte partirà di nuovo normalmente"); }
+  }
   else if (t.id === "autostart") { e.preventDefault(); S = await api("/api/autostart", {on: S.autostart ? "0" : "1"}); render(); toast(S.autostart ? "Ponte partirà insieme al computer" : "Avvio automatico disattivato"); }
   else if (t.id === "clipboard") { e.preventDefault(); S = await api("/api/clipboard", {on: S.clipboard ? "0" : "1"}); render(); toast(S.clipboard ? "Il testo copiato passa da un computer all'altro" : "Condivisione del testo copiato disattivata"); }
   else if (t.id === "ripple") { e.preventDefault(); S = await api("/api/ripple", {on: S.ripple ? "0" : "1"}); render(); toast(S.ripple ? "Il puntatore si mostra con dei cerchi a ogni passaggio" : "Cerchi intorno al puntatore disattivati"); }

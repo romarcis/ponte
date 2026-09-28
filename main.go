@@ -42,6 +42,14 @@ func main() {
 			background = true
 		case "--after-update":
 			afterUpdate = true
+		case "--admin-start=on", "--admin-start=off":
+			// Started as administrator by setAdminStart.
+			setupLog()
+			if err := adminStartCommand(a); err != nil {
+				logf("avvio come amministratore: %v", err)
+				os.Exit(1)
+			}
+			return
 		case "--version", "-v":
 			fmt.Println("Ponte", version)
 			return

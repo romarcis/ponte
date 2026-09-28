@@ -16,8 +16,10 @@ var webFS embed.FS
 
 type uiState struct {
 	status
-	Autostart bool `json:"autostart"`
-	CanFix    bool `json:"canFix"`
+	Autostart  bool `json:"autostart"`
+	AdminStart bool `json:"adminStart"` // Ponte starts as administrator at sign-in
+	Elevated   bool `json:"elevated"`   // this Ponte runs as administrator
+	CanFix     bool `json:"canFix"`
 }
 
 // serveUI serves the window's page and a small JSON API, only to this
@@ -63,7 +65,7 @@ func serveUI(ln net.Listener, app *App) {
 		})
 	}
 	state := func() any {
-		s := uiState{status: app.status(), Autostart: autostartEnabled()}
+		s := uiState{status: app.status(), Autostart: autostartEnabled(), AdminStart: adminStartEnabled(), Elevated: isElevated()}
 		s.CanFix = s.ErrorHelp != "" && canFixPermissions()
 		return s
 	}
@@ -82,6 +84,29 @@ func serveUI(ln net.Listener, app *App) {
 	api("POST /api/autostart", func(b map[string]string) any {
 		if err := setAutostart(b["on"] == "1"); err != nil {
 			logf("avvio automatico: %v", err)
+		}
+		return state()
+	})
+	api("POST /api/adminstart", func(b map[string]string) any {
+		on := b["on"] == "1"
+		if err := setAdminStart(on); err != nil {
+			logf("avvio come amministratore: %v", err)
+			return map[string]string{"error": err.Error()}
+		}
+		if !on {
+			setAutostart(true) // back to the normal start with the computer
+		}
+		if on && !isElevated() {
+			// Start again right away through the task, as administrator.
+			if err := restartAsAdmin(); err != nil {
+				logf("riavvio come amministratore: %v", err)
+				return map[string]string{"error": err.Error()}
+			}
+			go func() {
+				time.Sleep(200 * time.Millisecond)
+				quitApp(app)
+			}()
+			return map[string]string{"restart": "1"}
 		}
 		return state()
 	})
