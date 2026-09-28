@@ -192,3 +192,20 @@ func taskXML(exe string) []byte {
 // restartAsAdmin starts Ponte again through the task, as administrator; the
 // caller then quits.
 func restartAsAdmin() error { return schtasks("/Run", "/TN", adminTask).Run() }
+
+// relaunchAsAdmin starts Ponte again through the task when the option is on
+// but this Ponte was started normally (by hand, after an update...): it
+// could then not control programs run as administrator. A stamp keeps it
+// from trying in a loop when the task cannot give administrator rights.
+func relaunchAsAdmin() bool {
+	if isElevated() || !adminStartEnabled() {
+		return false
+	}
+	stamp := filepath.Join(configDir(), "riavvio-amministratore")
+	if st, err := os.Stat(stamp); err == nil && time.Since(st.ModTime()) < time.Minute {
+		return false
+	}
+	os.MkdirAll(configDir(), 0o700)
+	os.WriteFile(stamp, nil, 0o600)
+	return restartAsAdmin() == nil
+}

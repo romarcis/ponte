@@ -72,6 +72,12 @@ func main() {
 		showExisting(url, app.cfg.UIToken)
 		return
 	}
+	// Started normally although it should run as administrator: hand over
+	// to the administrator task, which waits for this port to be free.
+	if relaunchAsAdmin() {
+		ln.Close()
+		return
+	}
 	// Only now: a second Ponte started by mistake must not wipe the log of
 	// the one already running.
 	setupLog()
