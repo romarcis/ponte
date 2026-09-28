@@ -39,6 +39,7 @@ func (f *fakeInjector) Button(b uint8, d bool) { f.add(fmt.Sprintf("button %d %v
 func (f *fakeInjector) Wheel(a uint8, d int)   { f.add(fmt.Sprintf("wheel %d %d", a, d)) }
 func (f *fakeInjector) Key(c uint16, s uint8)  { f.add(fmt.Sprintf("key %d %d", c, s)) }
 func (f *fakeInjector) ShowCursor(on bool)     { f.add(fmt.Sprintf("cursor %v", on)) }
+func (f *fakeInjector) CheckCursor()           {}
 func (f *fakeInjector) has(s string) bool {
 	f.mu.Lock()
 	defer f.mu.Unlock()
