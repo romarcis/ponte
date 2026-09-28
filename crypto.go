@@ -31,7 +31,7 @@ import (
 // listener on the network sees nothing, and without the code/key nobody
 // can connect.
 
-const protoMagic = "PONTE/2\n"
+const protoMagic = "PONTE/3\n"
 
 const maxFrame = 4 << 20
 
@@ -140,8 +140,14 @@ func sessionKeys(shared, auth, transcript []byte) (c2s, s2c []byte) {
 	return
 }
 
+var errOldPeer = errors.New("l'altro computer usa una versione diversa di Ponte")
+
+var errWrongPeer = errors.New("a questo indirizzo risponde un altro computer")
+
 // clientHandshake authenticates to a server. It returns the server's ID.
-func clientHandshake(c net.Conn, clientID []byte, mode byte, secret []byte) (*secureConn, []byte, error) {
+// With expect, it stops before proving anything when another computer
+// answers: its address changed, and a stored key must not look wrong.
+func clientHandshake(c net.Conn, clientID []byte, mode byte, secret, expect []byte) (*secureConn, []byte, error) {
 	c.SetDeadline(time.Now().Add(10 * time.Second))
 	defer c.SetDeadline(time.Time{})
 	r := bufio.NewReader(c)
@@ -163,9 +169,12 @@ func clientHandshake(c net.Conn, clientID []byte, mode byte, secret []byte) (*se
 		return nil, nil, err
 	}
 	if string(reply[:len(protoMagic)]) != protoMagic {
-		return nil, nil, errors.New("l'altro computer usa una versione diversa di Ponte")
+		return nil, nil, errOldPeer
 	}
 	serverID := reply[8:24]
+	if len(expect) > 0 && !hmac.Equal(serverID, expect) {
+		return nil, nil, errWrongPeer
+	}
 	spub, err := ecdh.X25519().NewPublicKey(reply[24:56])
 	if err != nil {
 		return nil, nil, err
@@ -181,7 +190,9 @@ func clientHandshake(c net.Conn, clientID []byte, mode byte, secret []byte) (*se
 	}
 	proof := make([]byte, 32)
 	if _, err := io.ReadFull(r, proof); err != nil {
-		return nil, nil, errAuth
+		// Not a refusal: the connection dropped, which must never look
+		// like a forgotten pairing.
+		return nil, nil, err
 	}
 	if !hmac.Equal(proof, mac(auth, "S", th[:])) {
 		return nil, nil, errAuth
@@ -230,12 +241,16 @@ func serverHandshake(c net.Conn, serverID []byte, lookup func(mode byte, clientI
 	if _, err := io.ReadFull(r, proof); err != nil {
 		return nil, nil, 0, err
 	}
+	// A refusal is said out loud (a proof of zeros), so the client can
+	// tell it from a dropped connection.
 	secret, ok := lookup(mode, clientID)
 	if !ok {
+		c.Write(make([]byte, 32))
 		return nil, clientID, mode, errAuth
 	}
 	auth := authKeyFor(mode, secret, th[:])
 	if !hmac.Equal(proof, mac(auth, "C", th[:])) {
+		c.Write(make([]byte, 32))
 		return nil, clientID, mode, errAuth
 	}
 	if _, err := c.Write(mac(auth, "S", th[:])); err != nil {

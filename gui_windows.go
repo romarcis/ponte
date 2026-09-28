@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"sync"
 	"syscall"
 	"unsafe"
@@ -254,21 +255,33 @@ func removeTrayIcon() {
 func updateTrayTip() {
 	s := gui.app.status()
 	tip := "Ponte"
-	switch s.State {
-	case "waiting":
-		tip = "Ponte · In attesa dell'altro computer"
-	case "searching", "connecting":
-		tip = "Ponte · Cerco l'altro computer"
-	case "connected":
-		tip = "Ponte · Collegato a " + s.Peer
-	case "active":
-		if s.Role == "share" {
-			tip = "Ponte · Stai usando " + s.Peer
-		} else {
-			tip = "Ponte · " + s.Peer + " sta usando questo computer"
+	name := func(id string) string {
+		for _, p := range s.Peers {
+			if p.ID == id {
+				return p.Name
+			}
 		}
-	case "error":
+		return "un altro computer"
+	}
+	online := 0
+	for _, p := range s.Peers {
+		if p.Online {
+			online++
+		}
+	}
+	switch {
+	case s.State == "controlling":
+		tip = "Ponte · Stai usando " + name(s.Target)
+	case s.State == "controlled":
+		tip = "Ponte · " + name(s.By) + " sta usando questo computer"
+	case s.State == "error":
 		tip = "Ponte · " + s.Error
+	case online == 1:
+		tip = "Ponte · Collegato a 1 computer"
+	case online > 1:
+		tip = "Ponte · Collegato a " + strconv.Itoa(online) + " computer"
+	case len(s.Peers) > 0:
+		tip = "Ponte · Cerco gli altri computer"
 	}
 	if tip == gui.tip || gui.nid.hwnd == 0 {
 		return

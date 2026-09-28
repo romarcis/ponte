@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -70,8 +71,15 @@ func serveUI(ln net.Listener, app *App) {
 		return s
 	}
 	api("GET /api/state", func(map[string]string) any { return state() })
-	api("POST /api/role", func(b map[string]string) any { app.setRole(b["role"]); return state() })
-	api("POST /api/edge", func(b map[string]string) any { app.setEdge(b["edge"]); return state() })
+	api("POST /api/retry", func(map[string]string) any { app.start(); return state() })
+	api("POST /api/layout", func(b map[string]string) any {
+		x, errX := strconv.Atoi(b["x"])
+		y, errY := strconv.Atoi(b["y"])
+		if errX == nil && errY == nil && abs(x) < 50 && abs(y) < 50 {
+			app.moveScreen(b["id"], cell{x, y})
+		}
+		return state()
+	})
 	api("POST /api/name", func(b map[string]string) any { app.setName(strings.TrimSpace(b["name"])); return state() })
 	api("POST /api/connect", func(b map[string]string) any {
 		app.connect(b["id"], b["addr"], b["code"])
@@ -122,10 +130,7 @@ func serveUI(ln net.Listener, app *App) {
 		if err := fixPermissions(); err != nil {
 			return map[string]string{"error": err.Error()}
 		}
-		app.mu.Lock()
-		role := app.cfg.Role
-		app.mu.Unlock()
-		app.setRole(role)
+		app.start()
 		return map[string]string{"ok": "1"}
 	})
 	api("POST /api/show", func(map[string]string) any { showWindow(); return map[string]string{"ok": "1"} })
@@ -169,4 +174,11 @@ func serveUI(ln net.Listener, app *App) {
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	srv.Serve(ln)
+}
+
+func abs(v int) int {
+	if v < 0 {
+		return -v
+	}
+	return v
 }

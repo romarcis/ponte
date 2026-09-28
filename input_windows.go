@@ -73,8 +73,12 @@ const (
 	smCXVirtual = 78
 	smCYVirtual = 79
 
-	vkPause   = 0x13
-	vkNumLock = 0x90
+	vkPause    = 0x13
+	vkNumLock  = 0x90
+	vkLControl = 0xA2
+	vkRControl = 0xA3
+	vkLMenu    = 0xA4 // Alt
+	vkRMenu    = 0xA5
 )
 
 func init() {
@@ -166,12 +170,15 @@ type winCapture struct {
 	threadID   uintptr
 	done       chan struct{}
 	down       map[uint32]bool // keys held, to tell repeats from presses
+	paste      atomic.Pointer[func() bool]
 	unknown    map[uint32]bool // keys not sent, already logged
 }
 
 var activeCapture atomic.Pointer[winCapture]
 
-func newCapture() inputCapture { return &winCapture{down: map[uint32]bool{}, unknown: map[uint32]bool{}} }
+func newCapture() inputCapture {
+	return &winCapture{down: map[uint32]bool{}, unknown: map[uint32]bool{}}
+}
 
 func (c *winCapture) Start(ch chan<- inputEvent) error {
 	c.ch = ch
@@ -238,6 +245,16 @@ func (c *winCapture) SetGrab(on bool) {
 	c.grab.Store(on)
 	c.jumpLogged.Store(false)
 	c.markMoved()
+}
+
+func (c *winCapture) HoldPaste(armed func() bool) { c.paste.Store(&armed) }
+
+// holdPaste tells whether to hold back this V: Ctrl+V while files copied on
+// another computer are on offer. Hook thread only.
+func (c *winCapture) holdPaste(vk uint32) bool {
+	f := c.paste.Load()
+	return vk == 'V' && f != nil && !c.grab.Load() &&
+		(c.down[vkLControl] || c.down[vkRControl]) && !c.down[vkLMenu] && !c.down[vkRMenu] && (*f)()
 }
 
 func (c *winCapture) Warp(x, y int) {
@@ -312,6 +329,16 @@ var mouseHookCB = syscall.NewCallback(func(nCode, wParam, lParam uintptr) uintpt
 	}
 	m := (*msllhook)(unsafe.Pointer(lParam))
 	grab := c.grab.Load()
+	if m.flags&llmhfInjected != 0 {
+		// Replayed by Ponte (another computer controls this one) or by
+		// another program: not this computer's mouse. While this computer
+		// controls another one, it stays swallowed as before.
+		if grab {
+			return 1
+		}
+		r, _, _ := pCallNextHookEx.Call(0, nCode, wParam, lParam)
+		return r
+	}
 	switch wParam {
 	case wmMouseMove:
 		if c.stale(m) {
@@ -320,6 +347,7 @@ var mouseHookCB = syscall.NewCallback(func(nCode, wParam, lParam uintptr) uintpt
 		if grab {
 			c.grabbedMove(m)
 		} else {
+			c.send(inputEvent{kind: evMotion})
 			c.send(inputEvent{kind: evPos, x: m.pt.x, y: m.pt.y})
 		}
 	case wmLButtonDown, wmLButtonUp:
@@ -366,6 +394,12 @@ var keyHookCB = syscall.NewCallback(func(nCode, wParam, lParam uintptr) uintptr 
 				delete(c.down, k.vk)
 			}
 			c.send(inputEvent{kind: evKey, code: code, val: state})
+			if state != 0 && c.holdPaste(k.vk) {
+				if state == 1 {
+					c.send(inputEvent{kind: evPaste})
+				}
+				return 1
+			}
 		} else if (wParam == wmKeyDown || wParam == wmSysKeyDown) && !c.unknown[k.vk] {
 			c.unknown[k.vk] = true // once per key, not at every repeat
 			logf("tasto non riconosciuto, non inviato: vk %#x scan %#x flag %#x", k.vk, k.scan, k.flags)

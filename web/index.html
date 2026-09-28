@@ -119,6 +119,25 @@ p{margin:0}
 @keyframes wander{0%{transform:translate(-30px,-8px)}35%{transform:translate(20px,10px)}70%{transform:translate(-6px,18px)}100%{transform:translate(-30px,-8px)}}
 .arrow{position:absolute;color:var(--accent);opacity:.9}
 
+/* screen map */
+.mapwrap{overflow-x:auto;margin:4px 0 12px;padding:6px 0;min-height:150px;display:grid;place-items:center}
+.map{display:grid;gap:10px;justify-content:center;grid-auto-rows:auto;min-width:min-content;margin:0 auto}
+.tile{display:flex;flex-direction:column;align-items:center;cursor:grab;user-select:none;transition:transform .15s}
+.tile:active{cursor:grabbing}
+.tile .scr{width:var(--cw);height:calc(var(--cw)*.62);border-radius:10px;background:linear-gradient(160deg,var(--screen2),var(--screen));border:4px solid #0a0c18;position:relative;overflow:hidden;display:grid;place-items:center;color:#c9ccff;font-size:12.5px;font-weight:600;text-align:center;padding:6px;line-height:1.25}
+.tile .scr::before{content:"";position:absolute;inset:0;background:radial-gradient(120px 60px at 30% 0%,rgba(255,255,255,.14),transparent)}
+.tile .scr span{position:relative;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.tile .scr small{display:block;font-weight:500;opacity:.8;font-size:11px;margin-top:2px}
+.tile .stand{width:30%;height:10px;background:#9aa0c3;opacity:.5;clip-path:polygon(20% 0,80% 0,100% 100%,0 100%)}
+.tile.me .scr{background:linear-gradient(160deg,var(--accent),var(--accent2));color:#fff}
+.tile.off{opacity:.45}
+.tile.live .scr{box-shadow:0 0 0 3px var(--ok),0 0 24px rgba(22,163,106,.5)}
+.tile.sel .scr{box-shadow:0 0 0 3px var(--accent)}
+.tile.over .scr{transform:scale(1.04);box-shadow:0 0 0 3px var(--accent)}
+.cellslot{width:16px;height:16px;border-radius:12px;border:2px dashed transparent;display:grid;place-items:center;color:transparent;font-size:0;transition:.15s;align-self:center;justify-self:center}
+.map.dragging .cellslot,.map.picking .cellslot{width:var(--cw);height:calc(var(--cw)*.62 + 10px);border-color:var(--line);color:var(--muted);font-size:12px;cursor:pointer}
+.map .cellslot.over,.map.picking .cellslot:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+
 /* status */
 .status{display:flex;align-items:center;gap:14px}
 .dot{width:12px;height:12px;border-radius:50%;background:var(--muted);flex:none;position:relative}
@@ -244,7 +263,7 @@ kbd{display:inline-block;font-family:inherit;font-weight:600;font-size:12.5px;li
 
     <div class="card setcard">
       <h3>Copia tra i computer</h3>
-      <label class="setrow" id="clipboard"><span class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9 4h6v3H9zM9 12h6M9 16h4"/></svg></span><span class="st"><b>Condividi testo e file copiati</b><small>Copia con Ctrl+C su un computer e incolla con Ctrl+V sull'altro. File fino a 200 MB per volta.</small></span><span class="switch" id="clipsw"></span></label>
+      <label class="setrow" id="clipboard"><span class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9 4h6v3H9zM9 12h6M9 16h4"/></svg></span><span class="st"><b>Condividi testo e file copiati</b><small>Copia con Ctrl+C su un computer e incolla con Ctrl+V su un altro. I file partono solo quando li incolli, fino a 200 MB per volta.</small></span><span class="switch" id="clipsw"></span></label>
     </div>
 
     <div class="card setcard">
@@ -266,7 +285,6 @@ kbd{display:inline-block;font-family:inherit;font-weight:600;font-size:12.5px;li
     <div class="card setcard">
       <h3>Questo computer</h3>
       <div class="setrow"><span class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></span><span class="st"><b>Nome</b><small id="setname"></small></span><button class="btn small ghost" id="rename2">Cambia</button></div>
-      <div class="setrow" id="rolerow"><span class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 7h11l-3-3M17 17H6l3 3"/></svg></span><span class="st"><b>Ruolo</b><small id="setrole"></small></span><button class="btn small ghost" id="changerole">Cambia</button></div>
     </div>
 
     <div class="card setcard">
@@ -278,54 +296,26 @@ kbd{display:inline-block;font-family:inherit;font-weight:600;font-size:12.5px;li
     </div>
   </section>
 
-  <!-- choose a role -->
-  <section id="v-welcome" hidden>
-    <div class="hero">
-      <h1>Un mouse, una tastiera,<br>due computer.</h1>
-      <p class="muted">Sposta il puntatore oltre il bordo dello schermo e continua a lavorare sull'altro computer.</p>
-    </div>
-    <div class="roles" style="margin-top:26px">
-      <button class="role" data-role="share">
-        <div class="art"><svg viewBox="0 0 160 100" fill="none"><rect x="8" y="58" width="96" height="30" rx="7" fill="var(--card)" stroke="var(--accent)" stroke-width="2.5"/><g fill="var(--accent)" opacity=".75"><rect x="17" y="65" width="10" height="7" rx="2"/><rect x="31" y="65" width="10" height="7" rx="2"/><rect x="45" y="65" width="10" height="7" rx="2"/><rect x="59" y="65" width="10" height="7" rx="2"/><rect x="73" y="65" width="10" height="7" rx="2"/><rect x="87" y="65" width="9" height="7" rx="2"/><rect x="31" y="76" width="52" height="6" rx="2"/></g><rect x="118" y="46" width="30" height="44" rx="15" fill="var(--card)" stroke="var(--accent)" stroke-width="2.5"/><path d="M133 46v14" stroke="var(--accent)" stroke-width="2.5"/><path d="M60 40c10-22 40-30 62-18" stroke="var(--accent2)" stroke-width="2.5" stroke-dasharray="5 6" stroke-linecap="round"/><path d="M116 14l8 8-11 3" stroke="var(--accent2)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-        <div><h2>Questo computer ha mouse e tastiera</h2><p class="muted">Li condivide con l'altro computer, che potrai controllare da qui.</p></div>
-        <span class="go">Condividi <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
-      </button>
-      <button class="role" data-role="receive">
-        <div class="art"><svg viewBox="0 0 160 100" fill="none"><rect x="36" y="10" width="88" height="58" rx="7" fill="var(--card)" stroke="var(--accent)" stroke-width="2.5"/><path d="M68 84h24M80 68v16" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round"/><path d="M74 26l0 26 7-7 5 11 5-2-5-11 10 0z" fill="var(--accent2)"/><circle cx="18" cy="40" r="3" fill="var(--accent2)"/><circle cx="142" cy="40" r="3" fill="var(--accent2)" opacity=".5"/><path d="M10 28c-5 8-5 16 0 24M150 28c5 8 5 16 0 24" stroke="var(--accent2)" stroke-width="2.5" stroke-linecap="round" opacity=".6"/></svg></div>
-        <div><h2>Questo computer verrà controllato</h2><p class="muted">Usa il mouse e la tastiera dell'altro computer, senza fili in più.</p></div>
-        <span class="go">Ricevi <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
-      </button>
-    </div>
-    <p class="foot" style="margin-top:26px">Apri Ponte su entrambi i computer, collegati alla stessa rete.</p>
-  </section>
-
-  <!-- sharing -->
-  <section id="v-share" hidden>
+  <!-- main -->
+  <section id="v-main" hidden>
     <div class="grid">
       <div class="card">
-        <h3>Disposizione degli schermi</h3>
-        <div class="arr" id="arr"></div>
-        <p class="muted center" style="font-size:13.5px" id="arrhint">Tocca un riquadro per indicare dove si trova l'altro computer.</p>
+        <h3>Schermi</h3>
+        <div class="mapwrap"><div class="map" id="map"></div></div>
+        <p class="muted center" style="font-size:13.5px" id="maphint"></p>
       </div>
       <div class="stack">
-        <div class="card" id="sharestatus"></div>
-        <div class="card" id="clientsCard" hidden>
-          <h3>Computer abbinati</h3>
-          <div class="list" id="clients"></div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- receiving -->
-  <section id="v-recv" hidden>
-    <div class="grid" id="recvgrid">
-      <div class="card" id="recvstatus"></div>
-      <div class="stack">
+        <div class="card" id="statecard"></div>
         <div class="card">
-          <h3>Computer nella rete</h3>
-          <div class="list" id="found"></div>
+          <h3>Aggiungi un computer</h3>
+          <p class="muted" style="font-size:14px">Apri Ponte sull'altro computer e collegalo da lì a <b id="addname"></b> con questo codice, oppure scegli qui sotto l'altro computer e inserisci il codice che mostra.</p>
+          <div class="code" id="mycode"></div>
+          <div class="list" id="found" style="margin-top:14px"></div>
           <p style="margin-top:14px;font-size:14px" class="muted">Non lo trovi? <button class="link" id="manual">Inserisci l'indirizzo</button></p>
+        </div>
+        <div class="card" id="peersCard" hidden>
+          <h3>Computer collegati</h3>
+          <div class="list" id="peers"></div>
         </div>
       </div>
     </div>
@@ -356,7 +346,7 @@ kbd{display:inline-block;font-family:inherit;font-weight:600;font-size:12.5px;li
 <div class="veil" id="nameveil">
   <div class="modal">
     <h2>Nome di questo computer</h2>
-    <p class="muted">È il nome che vedrai sull'altro computer.</p>
+    <p class="muted">È il nome che vedrai sugli altri computer.</p>
     <input class="field" id="nameinput" maxlength="60" autocomplete="off">
     <div class="row"><button class="btn ghost" data-close>Annulla</button><button class="btn" id="namego">Salva</button></div>
   </div>
@@ -423,23 +413,18 @@ function render() {
   // Not while the color window is open: the refresh put back the old color
   // and the one chosen could not be confirmed.
   if (S.color && !picking) $("#colorpick").value = S.color;
-  $("#ripple").hidden = !S.role || S.os !== "windows";
-  $("#rolerow").hidden = !S.role;
-  $("#setrole").textContent = S.role === "share" ? "Ha mouse e tastiera e li condivide" : "Riceve mouse e tastiera dall'altro computer";
+  $("#ripple").hidden = S.os !== "windows";
   $("#setname").textContent = S.name;
   $("#setver").textContent = "Ponte " + (S.version === "dev" ? "dev" : S.version);
   $("#menubtn").classList.toggle("on", settingsOpen);
   $("#v-settings").hidden = !settingsOpen;
-  $("#v-welcome").hidden = settingsOpen || !!S.role;
-  $("#v-share").hidden = settingsOpen || S.role !== "share";
-  $("#v-recv").hidden = settingsOpen || S.role !== "receive";
-  $("#bgnote").hidden = settingsOpen || !S.role;
+  $("#v-main").hidden = settingsOpen;
+  $("#bgnote").hidden = settingsOpen;
   $("#bgnote").textContent = S.os === "windows"
     ? "Puoi chiudere questa finestra: Ponte resta attivo nell'area di notifica, vicino all'orologio."
     : "Puoi chiudere questa finestra: Ponte continua a funzionare. Per riaprirla avvia di nuovo Ponte.";
   renderAlert();
-  if (S.role === "share") renderShare();
-  if (S.role === "receive") renderRecv();
+  if (!settingsOpen) renderMain();
 }
 
 function renderAlert() {
@@ -447,97 +432,131 @@ function renderAlert() {
   const cmd = (S.errorHelp || "").split("\n\n");
   const help = esc(cmd[0]) + (cmd.length > 1 ? `<pre>${esc(cmd.slice(1).join("\n\n"))}</pre>` : "");
   set("alert", `<div class="alert">${icon.warn}<div style="flex:1"><b>${esc(S.error)}</b><div class="help">${help}</div>
-    <div class="acts">${S.canFix ? '<button class="btn small" id="fix">Risolvi</button>' : ""}${S.state === "error" ? '<button class="btn small ghost" id="retry">Riprova</button>' : ""}</div></div></div>`);
+    <div class="acts">${S.canFix ? '<button class="btn small" id="fix">Risolvi</button>' : ""}<button class="btn small ghost" id="retry">Riprova</button></div></div></div>`);
 }
 
-/* ---------- share ---------- */
-const EDGE_TXT = {right: "destro", left: "sinistro", top: "superiore", bottom: "inferiore"};
-function renderShare() {
-  const other = S.peer || "Altro computer";
-  const live = S.state === "active";
-  const pos = {top: "grid-area:1/2", left: "grid-area:2/1", right: "grid-area:2/3", bottom: "grid-area:3/2"};
-  let h = `<div class="mon me ${live ? "dim" : ""}" style="grid-area:2/2"><div class="scr"><span>${esc(S.name)}<br><small style="opacity:.8;font-weight:500">questo computer</small></span></div><div class="stand"></div><div class="foot2"></div></div>`;
-  for (const e of ["top", "left", "right", "bottom"]) {
-    if (e === S.edge) h += `<div class="mon small ${live ? "live" : ""}" style="${pos[e]}"><div class="scr"><span>${esc(other)}</span>${live ? icon.cursor : ""}</div><div class="stand"></div><div class="foot2"></div></div>`;
-    else h += `<button class="slot" style="${pos[e]}" data-edge="${e}">Metti qui</button>`;
-  }
-  set("arr", h);
-  $("#arrhint").textContent = S.edgeSwitch
-    ? `Il puntatore passa all'altro computer dal bordo ${EDGE_TXT[S.edge]} dello schermo.`
-    : "Usa il tasto Bloc Scorr per passare da un computer all'altro.";
+/* ---------- main ---------- */
+let pick = null, dragging = false; // the computer being moved on the map
 
-  let st;
-  if (S.state === "waiting") {
-    const c = S.code || "";
-    st = `<div class="status"><span class="dot wait"></span><div><h2>In attesa dell'altro computer</h2></div></div>
-      <div class="code">${[...c].map(d => `<span>${d}</span>`).join("")}</div>
-      <p class="muted" style="font-size:13.5px">Codice di abbinamento</p>
-      <ol class="steps">
-        <li><span>Apri <b>Ponte</b> sull'altro computer</span></li>
-        <li><span>Scegli <b>Questo computer verrà controllato</b></span></li>
-        <li><span>Seleziona <b>${esc(S.name)}</b> e inserisci il codice</span></li>
-      </ol>
-      ${S.clients.length ? `<div class="tip">${icon.info}<span>I computer già abbinati si collegano da soli, senza codice.</span></div>` : ""}`;
-  } else if (S.state === "connected" || S.state === "active") {
-    st = `<div class="status"><span class="dot ${live ? "live" : "ok"}"></span><div><h2>${live ? "Stai usando " + esc(other) : "Collegato a " + esc(other)}</h2>
-        <p class="muted">${live ? "Mouse e tastiera ora controllano l'altro computer." : "Tutto pronto."}</p></div></div>
-      <div class="tip">${icon.mouse}<span>${S.edgeSwitch
-        ? `Porta il puntatore oltre il bordo <b>${EDGE_TXT[S.edge]}</b> dello schermo per passare a ${esc(other)}, e torna indietro dal lato opposto.`
-        : `Premi <kbd>Bloc Scorr</kbd> per passare a ${esc(other)}.`}</span></div>
-      <div class="tip">${icon.info}<span>Puoi sempre tornare qui premendo <kbd>Bloc Scorr</kbd> oppure <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>Esc</kbd>.</span></div>${clipTip()}`;
+const peerName = id => (S.peers.find(p => p.id === id) || {}).name || "un altro computer";
+
+function renderMain() {
+  $("#addname").textContent = S.name;
+  set("mycode", [...(S.code || "")].map(d => `<span>${d}</span>`).join(""));
+  if (!dragging) renderMap();
+  renderState();
+
+  const rows = S.found.map(f => f.old
+    ? `<div class="item"><div class="ic">${osIcon(f.os)}</div><div class="tx"><b>${esc(f.name)}</b><small>Ha una versione vecchia di Ponte: aggiornala</small></div></div>`
+    : `<div class="item click" data-connect="${esc(f.id)}" data-addr="${esc(f.addr)}" data-name="${esc(f.name)}">
+      <div class="ic">${osIcon(f.os)}</div><div class="tx"><b>${esc(f.name)}</b><small>${osLabel(f.os)}${f.os ? " · " : ""}${esc(f.addr.replace(/:\d+$/, ""))}</small></div>
+      <button class="btn small">Collega</button></div>`);
+  set("found", rows.join("") || `<p class="empty">Nessun altro computer con Ponte nella rete, per ora…</p>`);
+
+  $("#peersCard").hidden = !S.peers.length;
+  set("peers", S.peers.map(p => `<div class="item"><div class="ic">${osIcon(p.os)}</div><div class="tx"><b>${esc(p.name)}</b><small>${osLabel(p.os)}</small></div>
+    ${p.online ? '<span class="badge">Collegato</span>' : p.old ? '<span class="badge" style="background:var(--warn-soft);color:var(--warn)">Da aggiornare</span>' : '<span class="badge" style="background:var(--card);color:var(--muted)">Non raggiungibile</span>'}
+    <button class="iconbtn" title="Togli dal gruppo" data-forget="${esc(p.id)}">${icon.trash}</button></div>`).join(""));
+}
+
+function renderMap() {
+  const L = S.layout || {}, ids = Object.keys(L);
+  if (!ids.length) return set("map", "");
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  for (const id of ids) { const p = L[id]; x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); y0 = Math.min(y0, p.y); y1 = Math.max(y1, p.y); }
+  x0--; x1++; y0--; y1++;
+  const cols = x1 - x0 + 1, rows = y1 - y0 + 1;
+  const room = ($(".mapwrap").clientWidth || 480) - 10 * (cols - 1);
+  const cw = Math.max(92, Math.min(150, Math.floor(room / cols)));
+  const peers = Object.fromEntries(S.peers.map(p => [p.id, p]));
+  const here = S.state === "controlling" ? S.target : S.id;
+  let h = "";
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+    const area = `grid-area:${y - y0 + 1}/${x - x0 + 1}`;
+    const id = ids.find(i => L[i].x === x && L[i].y === y);
+    if (!id) { h += `<div class="cellslot" style="${area}" data-x="${x}" data-y="${y}">Metti qui</div>`; continue; }
+    const me = id === S.id, p = peers[id] || {};
+    const sub = me ? (S.state === "controlled" ? "lo usa " + esc(peerName(S.by)) : "questo computer") : p.online ? "" : p.old ? "da aggiornare" : "non raggiungibile";
+    const cls = ["tile", me ? "me" : "", !me && !p.online ? "off" : "", id === here ? "live" : "", id === pick ? "sel" : ""].join(" ");
+    h += `<div class="${cls}" style="${area}" draggable="true" data-tile="${esc(id)}" data-x="${x}" data-y="${y}" title="Trascinalo dove si trova sulla scrivania">
+      <div class="scr"><span>${esc(me ? S.name : p.name)}${sub ? `<small>${sub}</small>` : ""}</span>${id === here ? icon.cursor : ""}</div><div class="stand"></div></div>`;
+  }
+  const m = $("#map");
+  m.style.setProperty("--cw", cw + "px");
+  m.style.gridTemplateColumns = `repeat(${cols}, auto)`;
+  m.classList.toggle("picking", !!pick);
+  set("map", h);
+  $("#maphint").textContent = pick ? "Tocca il posto dove si trova sulla scrivania."
+    : ids.length < 2 ? "Qui compariranno gli altri computer, quando li colleghi."
+    : S.edgeSwitch ? "Trascina gli schermi come sono sulla scrivania: il puntatore passa da uno all'altro dal bordo che si toccano."
+    : "Trascina gli schermi come sono sulla scrivania. Su questo computer si passa all'altro con il tasto Bloc Scorr.";
+}
+
+function renderState() {
+  let h;
+  const online = S.peers.filter(p => p.online);
+  if (S.state === "controlled") {
+    const who = esc(peerName(S.by));
+    h = `<div class="status"><span class="dot live"></span><div><h2>${who} sta usando questo computer</h2>
+      <p class="muted">Muovi il mouse di questo computer per riprenderlo, oppure premi <kbd>Bloc Scorr</kbd> su ${who}.</p></div></div>`;
+  } else if (S.state === "controlling") {
+    const who = esc(peerName(S.target));
+    h = `<div class="status"><span class="dot live"></span><div><h2>Stai usando ${who}</h2>
+      <p class="muted">Mouse e tastiera di questo computer ora controllano ${who}.</p></div></div>
+      <div class="tip">${icon.info}<span>Per tornare qui premi <kbd>Bloc Scorr</kbd> oppure <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>Esc</kbd>.</span></div>`;
   } else if (S.state === "error") {
-    st = `<div class="status"><span class="dot err"></span><div><h2>Condivisione non attiva</h2><p class="muted">Risolvi il problema indicato sopra.</p></div></div>`;
+    h = `<div class="status"><span class="dot err"></span><div><h2>Ponte non è attivo</h2><p class="muted">Risolvi il problema indicato sopra.</p></div></div>`;
+  } else if (!S.peers.length) {
+    h = `<div class="status"><span class="dot wait"></span><div><h2>Collega il primo computer</h2>
+      <p class="muted">Apri Ponte anche sull'altro computer, nella stessa rete, e collegali con il codice qui sotto.</p></div></div>`;
+  } else if (!online.length) {
+    h = `<div class="status"><span class="dot wait"></span><div><h2>Cerco gli altri computer</h2>
+      <p class="muted">Controlla che siano accesi, nella stessa rete, e che Ponte sia aperto.</p></div></div>`;
   } else {
-    st = `<div class="spin"></div>`;
+    h = `<div class="status"><span class="dot ok"></span><div><h2>Tutto pronto</h2>
+      <p class="muted">Collegato a ${online.map(p => esc(p.name)).join(", ")}.</p></div></div>
+      <div class="tip">${icon.mouse}<span>${S.edgeSwitch ? "Porta il puntatore oltre il bordo dello schermo per passare al computer che sta da quel lato. " : ""}Con <kbd>Bloc Scorr</kbd> passi al computer successivo. Comanda sempre il computer di cui usi il mouse.</span></div>${clipTip()}`;
   }
-  set("sharestatus", st);
-
-  $("#clientsCard").hidden = !S.clients.length;
-  set("clients", S.clients.map(c => `<div class="item"><div class="ic">${osIcon(c.os)}</div><div class="tx"><b>${esc(c.name)}</b><small>${osLabel(c.os)}</small></div>
-    <button class="iconbtn" title="Dimentica" data-forget="${esc(c.id)}">${icon.trash}</button></div>`).join(""));
+  set("statecard", h);
 }
 
 function clipTip() {
   if (!S.clipboard) return "";
   const txt = S.clipboardOK
-    ? (S.os === "windows" ? "Il testo e i file che copi su un computer si incollano anche sull'altro." : "Il testo che copi su un computer si incolla anche sull'altro.")
+    ? (S.os === "windows" ? "Il testo e i file che copi su un computer si incollano anche sugli altri." : "Il testo che copi su un computer si incolla anche sugli altri.")
     : "Per condividere il testo copiato installa <b>xclip</b> (X11) o <b>wl-clipboard</b> (Wayland) su questo computer.";
   return `<div class="tip" style="text-align:left">${icon.clip}<span>${txt}</span></div>`;
 }
 
-/* ---------- receive ---------- */
-function renderRecv() {
-  let h;
-  const who = esc(S.peer);
-  if (S.state === "connected") {
-    h = `<div class="hero-state"><div class="bigicon ok">${icon.check}</div><h2>Collegato a ${who}</h2>
-      <p class="muted big">Muovi il mouse di ${who} verso questo schermo per iniziare.</p>
-      <div class="tip" style="text-align:left">${icon.info}<span>Ponte si ricollega da solo a ${who} ogni volta che accendi i computer.</span></div>${clipTip()}</div>`;
-  } else if (S.state === "active") {
-    h = `<div class="hero-state"><div class="bigicon live">${icon.mouse}</div><h2>${who} sta usando questo computer</h2>
-      <p class="muted big">Premi <kbd>Bloc Scorr</kbd> oppure <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>Esc</kbd> su ${who} per tornare indietro.</p></div>`;
-  } else if (S.state === "connecting") {
-    h = `<div class="hero-state"><div class="spin"></div><h2>Collegamento in corso…</h2></div>`;
-  } else if (S.state === "error") {
-    h = `<div class="hero-state"><div class="bigicon" style="background:var(--err-soft);color:var(--err)">${icon.warn}</div><h2>Ricezione non attiva</h2><p class="muted">Risolvi il problema indicato sopra.</p></div>`;
-  } else {
-    h = `<div class="hero-state"><div class="radar"><i></i><i></i><i></i><div class="core">${icon.wifi}</div></div>
-      <h2>Cerco computer da cui farsi controllare</h2>
-      <p class="muted">Sull'altro computer apri Ponte e scegli <b>Questo computer ha mouse e tastiera</b>.</p></div>`;
-  }
-  set("recvstatus", h);
-
-  const known = new Set(S.found.map(f => f.id));
-  const rows = S.found.map(f => {
-    const cur = f.id === S.target && (S.state === "connected" || S.state === "active");
-    return `<div class="item click" data-connect="${esc(f.id)}" data-addr="${esc(f.addr)}" data-name="${esc(f.name)}" data-paired="${f.paired ? 1 : ""}">
-      <div class="ic">${osIcon(f.os)}</div><div class="tx"><b>${esc(f.name)}</b><small>${osLabel(f.os)}${f.os ? " · " : ""}${esc(f.addr.replace(/:\d+$/, ""))}</small></div>
-      ${cur ? '<span class="badge">Collegato</span>' : f.paired ? '<span class="badge" style="background:var(--accent-soft);color:var(--accent)">Abbinato</span>' : '<button class="btn small">Collega</button>'}</div>`;
-  });
-  for (const s of S.servers) if (!known.has(s.id)) rows.push(`<div class="item"><div class="ic">${osIcon(s.os)}</div><div class="tx"><b>${esc(s.name)}</b><small>Abbinato · non raggiungibile</small></div>
-    <button class="iconbtn" title="Dimentica" data-forget="${esc(s.id)}">${icon.trash}</button></div>`);
-  set("found", rows.join("") || `<p class="empty">Nessun computer trovato per ora…</p>`);
+async function moveTo(id, x, y) {
+  pick = null;
+  S = await api("/api/layout", {id, x: String(x), y: String(y)}); render();
 }
+
+document.addEventListener("dragstart", e => {
+  const t = e.target.closest("[data-tile]");
+  if (!t) return;
+  dragging = true; pick = null;
+  e.dataTransfer.setData("text/plain", t.dataset.tile);
+  e.dataTransfer.effectAllowed = "move";
+  setTimeout(() => $("#map").classList.add("dragging"), 0);
+});
+document.addEventListener("dragend", () => { dragging = false; $("#map").classList.remove("dragging"); document.querySelectorAll(".over").forEach(o => o.classList.remove("over")); });
+document.addEventListener("dragover", e => {
+  const c = e.target.closest(".cellslot, [data-tile]");
+  if (!c || !dragging) return;
+  e.preventDefault();
+  document.querySelectorAll(".over").forEach(o => o !== c && o.classList.remove("over"));
+  c.classList.add("over");
+});
+document.addEventListener("drop", e => {
+  const c = e.target.closest(".cellslot, [data-tile]");
+  if (!c) return;
+  e.preventDefault();
+  const id = e.dataTransfer.getData("text/plain");
+  dragging = false;
+  if (id && id !== c.dataset.tile) moveTo(id, c.dataset.x, c.dataset.y);
+});
 
 /* ---------- actions ---------- */
 document.addEventListener("click", e => { if (e.target.id === "colorpick") picking = true; }, true);
@@ -545,18 +564,17 @@ document.addEventListener("change", async e => {
   if (e.target.id === "colorpick") { picking = false; S = await api("/api/color", {color: e.target.value}); render(); }
 });
 document.addEventListener("click", async e => {
-  const t = e.target.closest("[data-connect]") || e.target.closest("button, label");
+  const t = e.target.closest("[data-connect], [data-tile], .cellslot") || e.target.closest("button, label");
   if (!t) return;
-  if (t.dataset.role) { S = await api("/api/role", {role: t.dataset.role}); render(); }
-  else if (t.dataset.edge) { S = await api("/api/edge", {edge: t.dataset.edge}); render(); }
+  if (t.dataset.tile !== undefined) {
+    if (pick && pick !== t.dataset.tile) moveTo(pick, t.dataset.x, t.dataset.y);
+    else { pick = pick ? null : t.dataset.tile; renderMap(); }
+  }
+  else if (t.classList.contains("cellslot")) { if (pick) moveTo(pick, t.dataset.x, t.dataset.y); }
   else if (t.dataset.forget) {
-    if (confirm("Dimenticare questo computer? Per ricollegarlo servirà di nuovo il codice.")) { S = await api("/api/forget", {id: t.dataset.forget}); render(); }
+    if (confirm("Togliere questo computer dal gruppo? Anche gli altri computer lo dimenticheranno, e per ricollegarlo servirà di nuovo il codice.")) { S = await api("/api/forget", {id: t.dataset.forget}); render(); }
   }
-  else if (t.dataset.connect !== undefined) {
-    const f = {id: t.dataset.connect, addr: t.dataset.addr, name: t.dataset.name};
-    if (t.dataset.paired) { S = await api("/api/connect", {id: f.id, addr: f.addr}); render(); }
-    else openCode(f);
-  }
+  else if (t.dataset.connect !== undefined) openCode({id: t.dataset.connect, addr: t.dataset.addr, name: t.dataset.name});
   else if (t.id === "menubtn") { settingsOpen = !settingsOpen; render(); scrollTo(0, 0); }
   else if (t.id === "settingsback") { settingsOpen = false; render(); }
   else if (t.id === "rename2") { $("#nameinput").value = S.name; openVeil("nameveil"); setTimeout(() => $("#nameinput").select(), 50); }
@@ -587,10 +605,9 @@ document.addEventListener("click", async e => {
   else if (t.id === "ripple") { e.preventDefault(); S = await api("/api/ripple", {on: S.ripple ? "0" : "1"}); render(); toast(S.ripple ? "Il puntatore si mostra con dei cerchi a ogni passaggio" : "Cerchi intorno al puntatore disattivati"); }
   else if (t.dataset.color !== undefined) { S = await api("/api/color", {color: t.dataset.color}); render(); }
   else if (t.id === "getlog") { location.href = "/ponte-log.txt?t=" + TOKEN; toast("Log salvato in Download: allegalo alla segnalazione su github.com/romarcis/ponte/issues"); }
-  else if (t.id === "changerole") { settingsOpen = false; S = await api("/api/role", {role: ""}); render(); }
   else if (t.id === "quit") { await api("/api/quit", {}); document.body.innerHTML = '<div class="app"><div class="card center" style="margin-top:80px"><h2>Ponte è stato chiuso</h2><p class="muted">Il mouse e la tastiera tornano a funzionare solo su ciascun computer.</p></div></div>'; clearInterval(timer); }
   else if (t.id === "doupdate") { t.disabled = true; t.textContent = "Scarico…"; const r = await api("/api/update", {}); if (r.error) { toast("Aggiornamento non riuscito: " + r.error); t.disabled = false; t.textContent = "Aggiorna e riavvia"; } else toast("Aggiornato: Ponte si sta riavviando…"); }
-  else if (t.id === "retry") { S = await api("/api/role", {role: S.role}); render(); }
+  else if (t.id === "retry") { t.disabled = true; S = await api("/api/retry", {}); render(); }
   else if (t.id === "fix") { t.disabled = true; t.textContent = "Attendi…"; const r = await api("/api/fix", {}); if (r.error) toast("Operazione non riuscita"); else toast("Fatto!"); refresh(); }
   else if (t.id === "manual") { $("#addr").value = ""; openVeil("addrveil"); setTimeout(() => $("#addr").focus(), 50); }
   else if (t.id === "addrgo") submitAddr();
@@ -603,7 +620,7 @@ document.addEventListener("click", async e => {
 function openVeil(id) { $("#" + id).classList.add("open"); }
 function closeVeils() { document.querySelectorAll(".veil").forEach(v => v.classList.remove("open")); }
 document.addEventListener("keydown", e => {
-  if (e.key === "Escape") { if (document.querySelector(".veil.open")) closeVeils(); else if (settingsOpen) { settingsOpen = false; render(); } }
+  if (e.key === "Escape") { if (document.querySelector(".veil.open")) closeVeils(); else if (pick) { pick = null; renderMap(); } else if (settingsOpen) { settingsOpen = false; render(); } }
   if (e.key === "Enter" && $("#addrveil").classList.contains("open")) submitAddr();
   if (e.key === "Enter" && $("#nameveil").classList.contains("open")) submitName();
 });

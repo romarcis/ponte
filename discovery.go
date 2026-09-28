@@ -8,9 +8,8 @@ import (
 	"time"
 )
 
-// Computers that share their mouse announce themselves on the local network
-// with a small UDP broadcast, so the other computer can list them without
-// typing any address.
+// Every Ponte announces itself on the local network with a small UDP
+// broadcast, so the others can list it without typing any address.
 
 const (
 	dataPort      = 24800
@@ -23,14 +22,21 @@ type beacon struct {
 	Name string `json:"name"`
 	OS   string `json:"os"`
 	Port int    `json:"port"`
+	// Proto is the protocol version (PONTE/3 from 1.4 on; missing before),
+	// so the window can say which computer needs an update.
+	Proto   int    `json:"proto,omitempty"`
+	Version string `json:"version,omitempty"`
 }
 
-type foundServer struct {
+const protoVersion = 3
+
+type foundPeer struct {
 	ID     string `json:"id"`
 	Name   string `json:"name"`
 	OS     string `json:"os"`
 	Addr   string `json:"addr"`
 	Paired bool   `json:"paired"`
+	Old    bool   `json:"old"` // runs a Ponte too old to talk to this one
 	seen   time.Time
 }
 
@@ -83,7 +89,7 @@ func announce(b func() beacon, stop <-chan struct{}) {
 
 type discovery struct {
 	mu    sync.Mutex
-	found map[string]*foundServer
+	found map[string]*foundPeer
 	conn  *net.UDPConn
 }
 
@@ -92,7 +98,7 @@ func startDiscovery() (*discovery, error) {
 	if err != nil {
 		return nil, err
 	}
-	d := &discovery{found: map[string]*foundServer{}, conn: conn}
+	d := &discovery{found: map[string]*foundPeer{}, conn: conn}
 	go d.run()
 	return d, nil
 }
@@ -109,8 +115,8 @@ func (d *discovery) run() {
 			continue
 		}
 		d.mu.Lock()
-		d.found[b.ID] = &foundServer{
-			ID: b.ID, Name: b.Name, OS: b.OS,
+		d.found[b.ID] = &foundPeer{
+			ID: b.ID, Name: b.Name, OS: b.OS, Old: b.Proto < protoVersion,
 			Addr: net.JoinHostPort(from.IP.String(), itoa(b.Port)),
 			seen: time.Now(),
 		}
@@ -118,13 +124,17 @@ func (d *discovery) run() {
 	}
 }
 
-func (d *discovery) list() []foundServer {
+// list returns the computers heard lately, except self.
+func (d *discovery) list(self string) []foundPeer {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	var out []foundServer
+	var out []foundPeer
 	for id, f := range d.found {
 		if time.Since(f.seen) > 7*time.Second {
 			delete(d.found, id)
+			continue
+		}
+		if id == self {
 			continue
 		}
 		out = append(out, *f)

@@ -8,9 +8,9 @@ import (
 	"strings"
 )
 
-// Copied files travel like copied text: files and folders copied on one
-// computer are sent right away, saved in a temporary folder on the other and
-// put on its clipboard, ready to paste.
+// Files and folders copied on one computer are sent when they are pasted on
+// another: saved there in a temporary folder, put on its clipboard and
+// pasted.
 
 const (
 	maxFiles  = 200 << 20 // bytes per copy; bigger copies stay local
@@ -20,7 +20,8 @@ const (
 // fileClipboard is a clipboard that can also hold files (Windows).
 type fileClipboard interface {
 	// Files returns the files on the clipboard; changed is false when the
-	// clipboard did not change since the last call.
+	// clipboard did not change since the last call (paths is empty when it
+	// changed to something else).
 	Files() (paths []string, changed bool)
 	SetFiles(paths []string)
 }
@@ -56,6 +57,7 @@ func sendFiles(paths []string, send func([]byte)) {
 		})
 		if err == errTooBig {
 			logf("file copiati non inviati: più di %d MB", maxFiles>>20)
+			send(wbuf{msgFileEnd}.u16(0))
 			return
 		}
 	}
@@ -89,6 +91,29 @@ func sendFiles(paths []string, send func([]byte)) {
 	send(end)
 }
 
+// filesSize adds up the size of paths, with what they contain; errTooBig
+// past maxFiles.
+func filesSize(paths []string) (int64, error) {
+	var total int64
+	for _, p := range paths {
+		err := filepath.WalkDir(p, func(path string, d fs.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return nil
+			}
+			if info, err := d.Info(); err == nil && info.Mode().IsRegular() {
+				if total += info.Size(); total > maxFiles {
+					return errTooBig
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			return total, err
+		}
+	}
+	return total, nil
+}
+
 func b2u8(b bool) uint8 {
 	if b {
 		return 1
@@ -96,8 +121,9 @@ func b2u8(b bool) uint8 {
 	return 0
 }
 
-// inbox is the copy being received.
+// inbox is the copy being received from one computer.
 type inbox struct {
+	from  string // the sending computer, for its own folder
 	dir   string
 	f     *os.File
 	ok    bool
@@ -106,14 +132,19 @@ type inbox struct {
 
 func inboxDir() string { return filepath.Join(os.TempDir(), "Ponte", "incoming") }
 
-func (c *clipSync) receivedFiles(msg []byte) {
-	in := &c.in
+func (c *clipSync) receivedFiles(in *inbox, msg []byte) {
 	r := &rbuf{b: msg[1:]}
 	switch msg[0] {
 	case msgFileStart:
 		in.close()
 		_, fc := c.cb.(fileClipboard)
-		*in = inbox{dir: inboxDir(), ok: fc && c.app.clipboardOn()}
+		dir := inboxDir()
+		if in.from != "" {
+			// Each computer has its own folder: two sending at once must
+			// not mix their files.
+			dir = filepath.Join(dir, in.from[:min(8, len(in.from))])
+		}
+		*in = inbox{from: in.from, dir: dir, ok: fc && c.app.clipboardOn()}
 		if in.ok {
 			os.RemoveAll(in.dir) // only the last copy is kept
 			in.ok = os.MkdirAll(in.dir, 0o700) == nil
@@ -161,10 +192,12 @@ func (c *clipSync) receivedFiles(msg []byte) {
 			paths = append(paths, filepath.Join(in.dir, name))
 		}
 		if !in.ok || len(paths) == 0 {
+			c.filesDone(in.from, false)
 			return
 		}
 		c.cb.(fileClipboard).SetFiles(paths)
-		logf("ricevuti %d file e cartelle (%.1f MB), pronti da incollare", len(paths), float64(in.total)/(1<<20))
+		logf("ricevuti %d file e cartelle (%.1f MB)", len(paths), float64(in.total)/(1<<20))
+		c.filesDone(in.from, true)
 	}
 }
 
