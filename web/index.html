@@ -212,6 +212,7 @@ kbd{display:inline-block;font-family:inherit;font-weight:600;font-size:12.5px;li
       <button class="iconbtn" id="menubtn" title="Impostazioni" style="background:var(--card);box-shadow:var(--shadow);width:36px;height:36px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg></button>
       <div class="pop" id="pop">
         <label id="autostart"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v9M6.3 7.3a8 8 0 1 0 11.4 0"/></svg>Avvia con il computer<span class="switch" id="autosw"></span></label>
+        <label id="service" title="Come Input Director: con un servizio di Windows, Ponte comanda anche le richieste di amministratore, la schermata di blocco e le app avviate come amministratore. Windows chiede una conferma per installarlo."><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l7 3v5c0 5-3 8.5-7 10-4-1.5-7-5-7-10V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg>Comanda anche le richieste di Windows<span class="switch" id="servicesw"></span></label>
         <label id="adminstart" title="Serve per usare con Ponte le app avviate come amministratore, come FanControl o PC Manager. Windows chiede una conferma la prima volta."><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l7 3v5c0 5-3 8.5-7 10-4-1.5-7-5-7-10V6l7-3z"/></svg>Avvia come amministratore<span class="switch" id="adminsw"></span></label>
         <label id="clipboard"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9 4h6v3H9zM9 12h6M9 16h4"/></svg>Condividi il testo copiato<span class="switch" id="clipsw"></span></label>
         <label id="ripple"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="2"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="10"/></svg>Cerchi intorno al puntatore a ogni passaggio<span class="switch" id="ripplesw"></span></label>
@@ -366,6 +367,8 @@ function render() {
   $("#autosw").classList.toggle("on", S.autostart);
   $("#adminstart").hidden = S.os !== "windows";
   $("#adminsw").classList.toggle("on", S.adminStart);
+  $("#service").hidden = !S.service || S.role !== "receive";
+  $("#servicesw").classList.toggle("on", S.service === "on");
   $("#ver").textContent = S.version === "dev" ? "dev" : "v" + S.version;
   $("#clipsw").classList.toggle("on", S.clipboard);
   $("#ripplesw").classList.toggle("on", S.ripple);
@@ -504,6 +507,14 @@ document.addEventListener("click", async e => {
     else openCode(f);
   }
   else if (t.id === "menubtn") $("#pop").classList.toggle("open");
+  else if (t.id === "service") {
+    e.preventDefault();
+    const on = S.service !== "on";
+    toast(on ? "Conferma la richiesta di Windows su questo computer…" : "Rimuovo il servizio di Ponte…");
+    const r = await api("/api/service", {on: on ? "1" : "0"});
+    if (r.error) toast("Non riuscito: " + r.error);
+    else { S = r; render(); toast(on ? "Servizio attivo: Ponte comanda anche le richieste di Windows" : "Servizio di Ponte rimosso"); }
+  }
   else if (t.id === "adminstart") {
     e.preventDefault();
     const on = !S.adminStart;

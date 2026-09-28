@@ -35,6 +35,9 @@ func setupLog() {
 }
 
 func main() {
+	if serviceCommand(os.Args[1:]) {
+		return
+	}
 	background, afterUpdate := false, false
 	for _, a := range os.Args[1:] {
 		switch a {

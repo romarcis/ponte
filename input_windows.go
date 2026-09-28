@@ -597,6 +597,9 @@ func (w *winInjector) MouseAbs(x, y int) {
 	if w.typing.Swap(false) || w.movingSince.Load() == 0 {
 		w.movingSince.Store(time.Now().UnixNano())
 	}
+	if helperSend(encMouse(x, y)) {
+		return
+	}
 	_, _, sw, sh := virtualScreen()
 	nx := int32(x * 65535 / max(sw-1, 1))
 	ny := int32(y * 65535 / max(sh-1, 1))
@@ -604,6 +607,9 @@ func (w *winInjector) MouseAbs(x, y int) {
 }
 
 func (w *winInjector) Button(b uint8, down bool) {
+	if helperSend(encButton(b, down)) {
+		return
+	}
 	var in mouseInput
 	switch b {
 	case btnLeft:
@@ -632,6 +638,9 @@ func pick(c bool, a, b uint32) uint32 {
 }
 
 func (w *winInjector) Wheel(axis uint8, delta int) {
+	if helperSend(encWheel(axis, delta)) {
+		return
+	}
 	f := uint32(mouseWheel)
 	if axis == 1 {
 		f = mouseHWheel
@@ -643,6 +652,9 @@ var vkByCode = map[uint16]uint16{42: 0xA0, 54: 0xA1, 58: 0x14} // left Shift, ri
 
 func (w *winInjector) Key(code uint16, state uint8) {
 	w.typing.Store(true)
+	if helperSend(encKey(code, state)) {
+		return
+	}
 	in := keybdInput{typ: inputKeyboard}
 	switch {
 	case vkByCode[code] != 0:
@@ -743,6 +755,9 @@ func elevatedInFront() string {
 // silently (Windows protects it from programs that are not), unless Ponte
 // runs as administrator too.
 func refusedReason() string {
+	if helperConnected() {
+		return "" // the service replays input everywhere
+	}
 	if inputBlocked.Load() {
 		return "c'è una richiesta di amministratore o la schermata di blocco"
 	}

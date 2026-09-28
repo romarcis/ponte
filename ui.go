@@ -16,10 +16,11 @@ var webFS embed.FS
 
 type uiState struct {
 	status
-	Autostart  bool `json:"autostart"`
-	AdminStart bool `json:"adminStart"` // Ponte starts as administrator at sign-in
-	Elevated   bool `json:"elevated"`   // this Ponte runs as administrator
-	CanFix     bool `json:"canFix"`
+	Autostart  bool   `json:"autostart"`
+	AdminStart bool   `json:"adminStart"` // Ponte starts as administrator at sign-in
+	Elevated   bool   `json:"elevated"`   // this Ponte runs as administrator
+	Service    string `json:"service"`    // Ponte service: "" (not on this system), off, on, stopped
+	CanFix     bool   `json:"canFix"`
 }
 
 // serveUI serves the window's page and a small JSON API, only to this
@@ -65,7 +66,7 @@ func serveUI(ln net.Listener, app *App) {
 		})
 	}
 	state := func() any {
-		s := uiState{status: app.status(), Autostart: autostartEnabled(), AdminStart: adminStartEnabled(), Elevated: isElevated()}
+		s := uiState{status: app.status(), Autostart: autostartEnabled(), AdminStart: adminStartEnabled(), Elevated: isElevated(), Service: serviceState()}
 		s.CanFix = s.ErrorHelp != "" && canFixPermissions()
 		return s
 	}
@@ -107,6 +108,13 @@ func serveUI(ln net.Listener, app *App) {
 				quitApp(app)
 			}()
 			return map[string]string{"restart": "1"}
+		}
+		return state()
+	})
+	api("POST /api/service", func(b map[string]string) any {
+		if err := setService(b["on"] == "1"); err != nil {
+			logf("servizio di Ponte: %v", err)
+			return map[string]string{"error": err.Error()}
 		}
 		return state()
 	})
