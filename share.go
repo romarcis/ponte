@@ -316,6 +316,12 @@ func (s *shareCtl) atEdge(x, y int) bool {
 	return false
 }
 
+// cursorRoom keeps the pointer this far from the bottom and right sides
+// when it changes screen: arriving in a corner left the arrow off screen, as
+// if it had vanished.
+// ponytail: fixed pixels, scale with the other screen's DPI if arrows still get clipped.
+const cursorRoom = 40
+
 func (s *shareCtl) enter(x, y int, center bool, why string) {
 	bx, by, bw, bh := s.cap.Bounds()
 	w, h := float64(s.cl.w), float64(s.cl.h)
@@ -395,13 +401,13 @@ func (s *shareCtl) leave(warp bool, why string) {
 		y := by + int(awayFromCorners(fy*float64(bh), float64(bh)))
 		switch s.app.edge() {
 		case "right":
-			x = bx + bw - 3
+			x, y = bx+bw-3, min(y, by+bh-cursorRoom)
 		case "left":
-			x = bx + 2
+			x, y = bx+2, min(y, by+bh-cursorRoom)
 		case "bottom":
-			y = by + bh - 3
+			x, y = min(x, bx+bw-cursorRoom), by+bh-3
 		case "top":
-			y = by + 2
+			x, y = min(x, bx+bw-cursorRoom), by+2
 		}
 		s.cap.Warp(x, y)
 		logf("   puntatore riportato in %d,%d", x, y)
@@ -421,9 +427,10 @@ func (s *shareCtl) settled() bool { return time.Since(s.switched) >= switchGuard
 // awayFromCorners keeps a coordinate along the shared edge a little inside
 // the screen, so the pointer never lands exactly in a corner, where it is
 // hard to see (at the bottom only its tip is on screen) and where the two
-// screens, of different sizes, meet their ends.
+// screens, of different sizes, meet their ends. The margin is at least
+// cursorRoom, so the arrow is never drawn off screen.
 func awayFromCorners(v, size float64) float64 {
-	m := max(16, size*0.03)
+	m := max(cursorRoom, size*0.03)
 	if size <= 2*m {
 		return size / 2
 	}

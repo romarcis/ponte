@@ -35,6 +35,7 @@ var (
 	pSetDPIAware          = user32.NewProc("SetProcessDPIAware")
 	pGetCurrentThreadId   = kernel32.NewProc("GetCurrentThreadId")
 	pGetModuleHandle      = kernel32.NewProc("GetModuleHandleW")
+	pGetTickCount         = kernel32.NewProc("GetTickCount")
 )
 
 const (
@@ -146,6 +147,7 @@ type winCapture struct {
 	ch       chan<- inputEvent
 	grab     atomic.Bool
 	cx, cy   atomic.Int32
+	moved    atomic.Uint32 // GetTickCount when Ponte last moved the pointer
 	threadID uintptr
 	done     chan struct{}
 	down     map[uint32]bool // keys held, to tell repeats from presses
@@ -218,9 +220,28 @@ func (c *winCapture) SetGrab(on bool) {
 		c.cy.Store(pt.y)
 	}
 	c.grab.Store(on)
+	c.markMoved()
 }
 
-func (c *winCapture) Warp(x, y int) { pSetCursorPos.Call(uintptr(x), uintptr(y)) }
+func (c *winCapture) Warp(x, y int) {
+	pSetCursorPos.Call(uintptr(x), uintptr(y))
+	c.markMoved()
+}
+
+func (c *winCapture) markMoved() {
+	t, _, _ := pGetTickCount.Call()
+	c.moved.Store(uint32(t))
+}
+
+// stale tells whether a mouse event was generated before Ponte last moved
+// the pointer. Windows computed its position from the old place: right
+// after the pointer is parked mid-screen, a motion made at the screen edge
+// would count as a jump of half a screen and throw the pointer into a corner
+// of the other computer.
+func (c *winCapture) stale(m *msllhook) bool {
+	d := int32(m.time - c.moved.Load())
+	return d <= 0 && d > -1000
+}
 
 func (c *winCapture) send(ev inputEvent) {
 	select {
@@ -239,6 +260,9 @@ var mouseHookCB = syscall.NewCallback(func(nCode, wParam, lParam uintptr) uintpt
 	grab := c.grab.Load()
 	switch wParam {
 	case wmMouseMove:
+		if c.stale(m) {
+			return 1
+		}
 		if grab {
 			cx, cy := c.cx.Load(), c.cy.Load()
 			if m.pt.x != cx || m.pt.y != cy {

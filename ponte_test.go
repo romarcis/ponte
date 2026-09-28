@@ -195,7 +195,7 @@ func TestEndToEnd(t *testing.T) {
 	time.Sleep(switchGuard)
 	cap.ch <- inputEvent{kind: evPos, x: 999, y: 0}
 	waitFor(t, "enter at the corner", func() bool { return cap.grabbed() })
-	waitFor(t, "kept away from the corner", func() bool { return inj.has("mouse 0 27") })
+	waitFor(t, "kept away from the corner", func() bool { return inj.has("mouse 0 40") })
 	cap.ch <- inputEvent{kind: evRel, x: -50, y: 0}
 	time.Sleep(100 * time.Millisecond)
 	if !cap.grabbed() {
