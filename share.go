@@ -293,6 +293,9 @@ func (s *shareCtl) handle(ev inputEvent) {
 				s.held[ev.code] = true
 			}
 			s.cl.send(encKey(ev.code, uint8(ev.val)))
+			if name := capsKeys[ev.code]; name != "" && ev.val != 2 {
+				logf("   %s %s, inviato", name, map[int32]string{0: "rilasciato", 1: "premuto"}[ev.val])
+			}
 		} else if ev.val == 0 {
 			delete(s.local, ev.code)
 		} else {

@@ -122,6 +122,12 @@ var evdevToExt = func() map[uint16]uint32 {
 	return m
 }()
 
+var modByVK = map[uint32]uint16{
+	0xA0: 42, 0xA1: 54, 0x14: 58, // left Shift, right Shift, Caps Lock
+	0xA2: 29, 0xA3: 97, 0xA4: 56, 0xA5: 100, // left/right Ctrl, left/right Alt
+	0x5B: 125, 0x5C: 126, // left/right Windows
+}
+
 func winKeyToEvdev(k *kbdllhook) uint16 {
 	switch k.vk {
 	case vkPause:
@@ -131,6 +137,11 @@ func winKeyToEvdev(k *kbdllhook) uint16 {
 	}
 	if k.scan > 0xFF {
 		return 0 // the fake Ctrl that Windows sends along with AltGr
+	}
+	// Modifiers by virtual key: their extended flag is not reliable (the
+	// right Shift, for one, can come flagged as extended and was lost).
+	if code := modByVK[k.vk]; code != 0 {
+		return code
 	}
 	if k.flags&llkhfExtended != 0 {
 		return extToEvdev[k.scan]
@@ -151,11 +162,12 @@ type winCapture struct {
 	threadID uintptr
 	done     chan struct{}
 	down     map[uint32]bool // keys held, to tell repeats from presses
+	unknown  map[uint32]bool // keys not sent, already logged
 }
 
 var activeCapture atomic.Pointer[winCapture]
 
-func newCapture() inputCapture { return &winCapture{down: map[uint32]bool{}} }
+func newCapture() inputCapture { return &winCapture{down: map[uint32]bool{}, unknown: map[uint32]bool{}} }
 
 func (c *winCapture) Start(ch chan<- inputEvent) error {
 	c.ch = ch
@@ -315,6 +327,9 @@ var keyHookCB = syscall.NewCallback(func(nCode, wParam, lParam uintptr) uintptr 
 				delete(c.down, k.vk)
 			}
 			c.send(inputEvent{kind: evKey, code: code, val: state})
+		} else if (wParam == wmKeyDown || wParam == wmSysKeyDown) && !c.unknown[k.vk] {
+			c.unknown[k.vk] = true // once per key, not at every repeat
+			logf("tasto non riconosciuto, non inviato: vk %#x scan %#x flag %#x", k.vk, k.scan, k.flags)
 		}
 	}
 	if c.grab.Load() {

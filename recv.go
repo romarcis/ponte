@@ -331,9 +331,15 @@ func (r *recvCtl) session(req *connectReq) (err error) {
 				keys[code] = true
 			}
 			r.inj.Key(code, state)
+			if name := capsKeys[code]; name != "" && state != 2 {
+				logf("   %s %s", name, map[uint8]string{0: "rilasciato", 1: "premuto"}[state])
+			}
 		}
 	}
 }
+
+// capsKeys are logged on the controlled computer, to follow capital letters.
+var capsKeys = map[uint16]string{42: "Shift sinistro", 54: "Shift destro", 58: "Bloc Maiusc"}
 
 func (r *recvCtl) discList() []foundServer {
 	if r.disc == nil {
