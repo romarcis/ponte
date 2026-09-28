@@ -4,6 +4,12 @@ Un mouse e una tastiera per due computer. Porti il puntatore oltre il bordo dell
 schermo e continui a lavorare sull'altro computer, come con Synergy o Barrier,
 ma in un unico file da circa 6 MB, senza installazione.
 
+## Scarica
+
+L'ultima versione è nelle [Release](https://github.com/romarcis/ponte/releases/latest):
+`Ponte.exe` per Windows (`Ponte-arm64.exe` per i PC Windows con processore ARM),
+`ponte-linux-x64` per Linux.
+
 ## Come si usa
 
 1. Avvia `Ponte` su entrambi i computer (collegati alla stessa rete).
@@ -57,6 +63,19 @@ Serve Go 1.24 o successivo.
 ./build.sh          # crea dist/Ponte.exe (Windows) e dist/ponte-linux-*
 go test ./...       # prova end-to-end di abbinamento, bordo, tastiera
 ```
+
+## Pubblicare una nuova versione
+
+Crea un tag che inizia con `v` e mandalo su GitHub:
+
+```sh
+git tag v1.2.0
+git push origin v1.2.0
+```
+
+GitHub Actions esegue i test, compila gli eseguibili e crea la Release con i file
+allegati. Ogni modifica su `main` viene comunque provata e compilata: gli eseguibili
+si trovano tra gli artifact dell'esecuzione.
 
 ## Com'è fatto
 

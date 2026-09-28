@@ -56,7 +56,8 @@ type status struct {
 	ClipboardOK bool          `json:"clipboardOK"`
 }
 
-const version = "1.0"
+// version is set at build time (build.sh, from the release tag).
+var version = "dev"
 
 func newApp() *App {
 	a := &App{cfg: loadConfig(), state: "idle"}
