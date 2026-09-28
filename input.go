@@ -61,6 +61,9 @@ type inputInjector interface {
 // computer is being controlled. Windows hides it when no mouse is plugged in.
 type cursorShower interface {
 	ShowCursor(on bool)
+	// CheckCursor is called often while controlled: it notices when the
+	// pointer becomes hidden, logs why, and shows it again.
+	CheckCursor()
 }
 
 // setupError is a problem the user can fix; help explains how.

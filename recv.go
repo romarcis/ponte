@@ -253,6 +253,7 @@ func (r *recvCtl) session(req *connectReq) (err error) {
 
 	keys := map[uint16]bool{}
 	btns := map[uint8]bool{}
+	var lastCheck time.Time
 	release := func() {
 		for k := range keys {
 			r.inj.Key(k, 0)
@@ -283,6 +284,9 @@ func (r *recvCtl) session(req *connectReq) (err error) {
 		case msgClipboard:
 			cs.received(msg)
 		case msgPing:
+			if cs, ok := r.inj.(cursorShower); ok {
+				cs.CheckCursor()
+			}
 			if err := sc.WriteMsg([]byte{msgPing}); err != nil {
 				return err
 			}
@@ -304,6 +308,10 @@ func (r *recvCtl) session(req *connectReq) (err error) {
 			logf("<- %s torna al suo schermo", name)
 		case msgMouse:
 			r.inj.MouseAbs(int(rb.i32()), int(rb.i32()))
+			if cs, ok := r.inj.(cursorShower); ok && time.Since(lastCheck) > 250*time.Millisecond {
+				lastCheck = time.Now()
+				cs.CheckCursor()
+			}
 		case msgButton:
 			b, down := rb.u8(), rb.u8() != 0
 			if down {

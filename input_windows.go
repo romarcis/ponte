@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -25,6 +26,9 @@ var (
 	pSetCursorPos         = user32.NewProc("SetCursorPos")
 	pGetSystemMetrics     = user32.NewProc("GetSystemMetrics")
 	pGetCursorInfo        = user32.NewProc("GetCursorInfo")
+	pGetForegroundWindow  = user32.NewProc("GetForegroundWindow")
+	pGetWindowText        = user32.NewProc("GetWindowTextW")
+	pGetClassName         = user32.NewProc("GetClassNameW")
 	pSystemParametersInfo = user32.NewProc("SystemParametersInfoW")
 	pSendInput            = user32.NewProc("SendInput")
 	pSetDpiAwareCtx       = user32.NewProc("SetProcessDpiAwarenessContext")
@@ -378,6 +382,8 @@ type winInjector struct {
 	mu     sync.Mutex
 	forced bool      // MouseKeys turned on by Ponte to show the pointer
 	saved  mouseKeys // the user's MouseKeys settings, restored afterwards
+	active bool      // this computer is being controlled
+	shown  bool      // the pointer was visible at the last check
 }
 
 func newInjector() inputInjector { return &winInjector{} }
@@ -430,10 +436,19 @@ func pointerHidden() bool {
 func (w *winInjector) ShowCursor(on bool) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if on == w.forced || (on && !pointerHidden()) {
+	w.active, w.shown = on, true
+	if on && pointerHidden() {
+		w.forceCursor("puntatore nascosto da Windows (nessun mouse collegato?): lo mostro con i Tasti del mouse")
+	} else if !on {
+		w.restoreCursor()
+	}
+}
+
+func (w *winInjector) forceCursor(why string) {
+	if w.forced {
 		return
 	}
-	if on {
+	{
 		w.saved = mouseKeys{}
 		w.saved.size = uint32(unsafe.Sizeof(w.saved))
 		if r, _, _ := pSystemParametersInfo.Call(spiGetMouseKeys, uintptr(w.saved.size), uintptr(unsafe.Pointer(&w.saved)), 0); r == 0 {
@@ -441,14 +456,67 @@ func (w *winInjector) ShowCursor(on bool) {
 		}
 		mk := w.saved
 		mk.flags |= mkfMouseKeysOn | mkfAvailable
-		if r, _, _ := pSystemParametersInfo.Call(spiSetMouseKeys, uintptr(mk.size), uintptr(unsafe.Pointer(&mk)), 0); r != 0 {
+		if r, _, err := pSystemParametersInfo.Call(spiSetMouseKeys, uintptr(mk.size), uintptr(unsafe.Pointer(&mk)), 0); r != 0 {
 			w.forced = true
-			logf("puntatore nascosto da Windows (nessun mouse collegato?): lo mostro con i Tasti del mouse")
+			logf("%s", why)
+		} else {
+			logf("impossibile attivare i Tasti del mouse: %v", err)
 		}
+	}
+}
+
+func (w *winInjector) restoreCursor() {
+	if !w.forced {
 		return
 	}
 	pSystemParametersInfo.Call(spiSetMouseKeys, uintptr(w.saved.size), uintptr(unsafe.Pointer(&w.saved)), 0)
 	w.forced = false
+}
+
+// CheckCursor watches the pointer while this computer is controlled. When
+// Windows stops drawing it, the log says what was going on (which window was
+// in front, whether a mouse is seen, the Tasti del mouse state) and Ponte
+// turns on the Tasti del mouse even if Windows says a mouse is present.
+func (w *winInjector) CheckCursor() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if !w.active {
+		return
+	}
+	ci := cursorInfo{}
+	ci.size = uint32(unsafe.Sizeof(ci))
+	if r, _, _ := pGetCursorInfo.Call(uintptr(unsafe.Pointer(&ci))); r == 0 {
+		return
+	}
+	shown := ci.flags&1 != 0 // CURSOR_SHOWING
+	if shown == w.shown {
+		return
+	}
+	w.shown = shown
+	if shown {
+		logf("   puntatore di nuovo visibile in %d,%d", ci.pt.x, ci.pt.y)
+		return
+	}
+	mk := mouseKeys{}
+	mk.size = uint32(unsafe.Sizeof(mk))
+	pSystemParametersInfo.Call(spiGetMouseKeys, uintptr(mk.size), uintptr(unsafe.Pointer(&mk)), 0)
+	logf("   PUNTATORE NASCOSTO in %d,%d (flag %d); mouse collegato: %v; Tasti del mouse: %#x (attivati da Ponte: %v); in primo piano: %s",
+		ci.pt.x, ci.pt.y, ci.flags, metric(smMousePresent) != 0, mk.flags, w.forced, foregroundWindow())
+	if !w.forced {
+		w.forceCursor("   lo mostro con i Tasti del mouse")
+	}
+}
+
+// foregroundWindow describes the window in front, for the log.
+func foregroundWindow() string {
+	h, _, _ := pGetForegroundWindow.Call()
+	if h == 0 {
+		return "nessuna finestra (schermata di blocco o desktop protetto?)"
+	}
+	var title, class [256]uint16
+	pGetWindowText.Call(h, uintptr(unsafe.Pointer(&title[0])), 256)
+	pGetClassName.Call(h, uintptr(unsafe.Pointer(&class[0])), 256)
+	return fmt.Sprintf("%q (%s)", syscall.UTF16ToString(title[:]), syscall.UTF16ToString(class[:]))
 }
 
 func (w *winInjector) ScreenSize() (int, int) {

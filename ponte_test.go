@@ -39,6 +39,7 @@ func (f *fakeInjector) Button(b uint8, d bool) { f.add(fmt.Sprintf("button %d %v
 func (f *fakeInjector) Wheel(a uint8, d int)   { f.add(fmt.Sprintf("wheel %d %d", a, d)) }
 func (f *fakeInjector) Key(c uint16, s uint8)  { f.add(fmt.Sprintf("key %d %d", c, s)) }
 func (f *fakeInjector) ShowCursor(on bool)     { f.add(fmt.Sprintf("cursor %v", on)) }
+func (f *fakeInjector) CheckCursor()           {}
 func (f *fakeInjector) has(s string) bool {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -98,6 +99,8 @@ func TestEndToEnd(t *testing.T) {
 		return cliClip
 	}
 
+	switchGuard = 0
+	defer func() { switchGuard = 300 * time.Millisecond }()
 	srv := &App{cfg: loadConfig(), state: "idle"}
 	srv.cfg.Name = "Fisso"
 	cli := &App{cfg: loadConfig(), state: "idle"}
@@ -185,6 +188,23 @@ func TestEndToEnd(t *testing.T) {
 	if cap.warp != [2]int{997, 355} {
 		t.Fatalf("warp = %v", cap.warp)
 	}
+	waitFor(t, "client back to connected", func() bool { return cli.status().State == "connected" })
+
+	// Pushing against the edge right after a switch does not bounce back.
+	switchGuard = 300 * time.Millisecond
+	time.Sleep(switchGuard)
+	cap.ch <- inputEvent{kind: evPos, x: 999, y: 0}
+	waitFor(t, "enter at the corner", func() bool { return cap.grabbed() })
+	waitFor(t, "kept away from the corner", func() bool { return inj.has("mouse 0 40") })
+	cap.ch <- inputEvent{kind: evRel, x: -50, y: 0}
+	time.Sleep(100 * time.Millisecond)
+	if !cap.grabbed() {
+		t.Fatal("bounced back right after the switch")
+	}
+	time.Sleep(switchGuard)
+	cap.ch <- inputEvent{kind: evRel, x: -50, y: 0}
+	waitFor(t, "leave after the guard", func() bool { return !cap.grabbed() })
+	switchGuard = 0
 	waitFor(t, "client back to connected", func() bool { return cli.status().State == "connected" })
 	if inj.last() != "cursor false" {
 		t.Fatalf("pointer visibility not given back: %q", inj.last())
