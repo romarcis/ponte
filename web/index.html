@@ -19,7 +19,7 @@
   --screen:#0b0d1c; --screen2:#232858;
 }}
 *{box-sizing:border-box}
-html,body{margin:0;height:100%}
+html{height:100%}body{margin:0;min-height:100%;background-attachment:fixed!important}
 body{font:15px/1.5 "Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,"Ubuntu","Cantarell",sans-serif;color:var(--text);
   background:radial-gradient(1200px 600px at 10% -10%,var(--accent-soft),transparent 60%),radial-gradient(900px 500px at 110% 110%,var(--bg2),transparent 60%),var(--bg);
   -webkit-font-smoothing:antialiased}
@@ -37,22 +37,36 @@ button{font:inherit;cursor:pointer}
 .iconbtn{border:0;background:transparent;color:var(--muted);width:30px;height:30px;border-radius:50%;display:grid;place-items:center}
 .iconbtn:hover{background:var(--card2);color:var(--text)}
 .iconbtn svg{width:17px;height:17px}
-.menu{position:relative}
-.pop{position:absolute;right:0;top:40px;width:270px;background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:6px;z-index:20;display:none}
-.pop.open{display:block;animation:pop .14s ease-out}
-.pop button,.pop label{display:flex;align-items:center;gap:10px;width:100%;border:0;background:none;color:var(--text);padding:10px 12px;border-radius:9px;text-align:left;font-size:14px}
-.pop button:hover,.pop label:hover{background:var(--card2)}
-.pop hr{border:0;border-top:1px solid var(--line);margin:4px 6px}
-.pop .danger{color:var(--err)}
+.gear{background:var(--card);box-shadow:var(--shadow);width:36px;height:36px}
+.gear.on{background:var(--accent);color:#fff}
 .switch{margin-left:auto;width:36px;height:21px;border-radius:99px;background:var(--line);position:relative;transition:.2s;flex:none}
 .switch::after{content:"";position:absolute;left:3px;top:3px;width:15px;height:15px;border-radius:50%;background:#fff;transition:.2s;box-shadow:0 1px 2px rgba(0,0,0,.25)}
 .switch.on{background:var(--accent)}.switch.on::after{left:18px}
-.pop .colors{display:flex;align-items:center;gap:7px;padding:8px 12px;font-size:14px;flex-wrap:wrap}
-.pop .colors span{flex:1 0 100%;margin-bottom:2px}
-.pop .colors button,.pop .colors label{width:24px;height:24px;padding:0;border-radius:50%;flex:none;border:2px solid var(--card);box-shadow:0 0 0 1px var(--line)}
-.pop .colors .sel{box-shadow:0 0 0 2px var(--text)}
-.pop .colors label{background:conic-gradient(red,yellow,lime,cyan,blue,magenta,red);position:relative;overflow:hidden;cursor:pointer}
-.pop .colors input{position:absolute;inset:0;opacity:0;cursor:pointer}
+
+/* settings */
+.settings{display:flex;flex-direction:column;gap:16px;max-width:720px;width:100%;margin:0 auto}
+.sethead{display:flex;align-items:center;gap:14px}
+.sethead h2{margin:0}
+.sethead .btn{display:flex;align-items:center;gap:6px}
+.setcard{padding:18px 20px}
+.setcard h3{margin:0 0 6px}
+.setrow{display:flex;align-items:center;gap:14px;padding:12px 4px;border-top:1px solid var(--line);cursor:default}
+.setcard h3+.setrow{border-top:0}
+label.setrow{cursor:pointer}
+label.setrow:hover .st b{color:var(--accent)}
+.setrow .si{width:36px;height:36px;border-radius:10px;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;flex:none}
+.setrow .si svg{width:19px;height:19px}
+.setrow .si.danger{background:var(--err-soft);color:var(--err)}
+.setrow .st{flex:1;min-width:0;display:flex;flex-direction:column}
+.setrow .st small{color:var(--muted);font-size:13px}
+.setrow .btn{flex:none}
+.btn.ghost.danger{color:var(--err)}
+.setrow.colors{flex-wrap:wrap}
+.swatches{display:flex;gap:7px;align-items:center;flex-wrap:wrap}
+.swatches button,.swatches label{width:26px;height:26px;padding:0;border-radius:50%;flex:none;border:2px solid var(--card);box-shadow:0 0 0 1px var(--line)}
+.swatches .sel{box-shadow:0 0 0 2px var(--text)}
+.swatches label{background:conic-gradient(red,yellow,lime,cyan,blue,magenta,red);position:relative;overflow:hidden;cursor:pointer}
+.swatches input{position:absolute;inset:0;opacity:0;cursor:pointer}
 @keyframes pop{from{opacity:0;transform:translateY(-4px)}}
 
 /* cards */
@@ -208,15 +222,35 @@ kbd{display:inline-block;font-family:inherit;font-weight:600;font-size:12.5px;li
       <b id="myname">…</b>
       <button class="iconbtn" id="rename" title="Cambia nome"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20h4L19 9l-4-4L4 16v4z"/></svg></button>
     </div>
-    <div class="menu">
-      <button class="iconbtn" id="menubtn" title="Impostazioni" style="background:var(--card);box-shadow:var(--shadow);width:36px;height:36px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg></button>
-      <div class="pop" id="pop">
-        <label id="autostart"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v9M6.3 7.3a8 8 0 1 0 11.4 0"/></svg>Avvia con il computer<span class="switch" id="autosw"></span></label>
-        <label id="service" title="Come Input Director: con un servizio di Windows, Ponte comanda anche le richieste di amministratore, la schermata di blocco e le app avviate come amministratore. Windows chiede una conferma per installarlo."><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l7 3v5c0 5-3 8.5-7 10-4-1.5-7-5-7-10V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg>Comanda anche le richieste di Windows<span class="switch" id="servicesw"></span></label>
-        <label id="adminstart" title="Serve per usare con Ponte le app avviate come amministratore, come FanControl o PC Manager. Windows chiede una conferma la prima volta."><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l7 3v5c0 5-3 8.5-7 10-4-1.5-7-5-7-10V6l7-3z"/></svg>Avvia come amministratore<span class="switch" id="adminsw"></span></label>
-        <label id="clipboard"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9 4h6v3H9zM9 12h6M9 16h4"/></svg>Condividi il testo copiato<span class="switch" id="clipsw"></span></label>
-        <label id="ripple"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="2"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="10"/></svg>Cerchi intorno al puntatore a ogni passaggio<span class="switch" id="ripplesw"></span></label>
-        <div class="colors" id="colors"><span>Colore di Ponte e dei cerchi</span>
+    <button class="iconbtn gear" id="menubtn" title="Impostazioni" aria-label="Impostazioni"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
+  </div>
+
+  <div id="alert"></div>
+  <div id="update"></div>
+
+  <!-- settings -->
+  <section id="v-settings" class="settings" hidden>
+    <div class="sethead">
+      <button class="btn small ghost" id="settingsback"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>Indietro</button>
+      <h2>Impostazioni</h2>
+    </div>
+
+    <div class="card setcard">
+      <h3>Avvio</h3>
+      <label class="setrow" id="autostart"><span class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v9M6.3 7.3a8 8 0 1 0 11.4 0"/></svg></span><span class="st"><b>Avvia con il computer</b><small>Ponte parte da solo quando accedi a Windows.</small></span><span class="switch" id="autosw"></span></label>
+      <label class="setrow" id="adminstart"><span class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l7 3v5c0 5-3 8.5-7 10-4-1.5-7-5-7-10V6l7-3z"/></svg></span><span class="st"><b>Avvia come amministratore</b><small>Per usare con Ponte le app avviate come amministratore, come FanControl o PC Manager. Windows chiede una conferma la prima volta.</small></span><span class="switch" id="adminsw"></span></label>
+      <label class="setrow" id="service"><span class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l7 3v5c0 5-3 8.5-7 10-4-1.5-7-5-7-10V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg></span><span class="st"><b>Comanda anche le richieste di Windows</b><small>Come Input Director: mouse e tastiera funzionano anche sulle richieste di amministratore e sulla schermata di blocco. Windows chiede una conferma per installarlo.</small></span><span class="switch" id="servicesw"></span></label>
+    </div>
+
+    <div class="card setcard">
+      <h3>Copia tra i computer</h3>
+      <label class="setrow" id="clipboard"><span class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9 4h6v3H9zM9 12h6M9 16h4"/></svg></span><span class="st"><b>Condividi testo e file copiati</b><small>Copia con Ctrl+C su un computer e incolla con Ctrl+V sull'altro. File fino a 200 MB per volta.</small></span><span class="switch" id="clipsw"></span></label>
+    </div>
+
+    <div class="card setcard">
+      <h3>Aspetto</h3>
+      <div class="setrow colors" id="colors"><span class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="8.5" cy="10" r="1.2" fill="currentColor"/><circle cx="12" cy="7.5" r="1.2" fill="currentColor"/><circle cx="15.5" cy="10" r="1.2" fill="currentColor"/></svg></span><span class="st"><b>Colore di Ponte e dei cerchi</b><small>Anche l'icona vicino all'orologio prende questo colore.</small></span>
+        <span class="swatches">
           <button data-color="" style="background:#5b5bf7" title="Viola (predefinito)" aria-label="Viola (predefinito)"></button>
           <button data-color="#0a6ebd" style="background:#0a6ebd" title="Blu" aria-label="Blu"></button>
           <button data-color="#0f7b3e" style="background:#0f7b3e" title="Verde" aria-label="Verde"></button>
@@ -224,17 +258,24 @@ kbd{display:inline-block;font-family:inherit;font-weight:600;font-size:12.5px;li
           <button data-color="#be185d" style="background:#be185d" title="Magenta" aria-label="Magenta"></button>
           <button data-color="#475569" style="background:#475569" title="Grigio" aria-label="Grigio"></button>
           <label title="Scegli un altro colore" aria-label="Scegli un altro colore"><input type="color" id="colorpick"></label>
-        </div>
-        <button id="getlog"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>Scarica il log per segnalare un problema</button>
-        <button id="changerole"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 7h11l-3-3M17 17H6l3 3"/></svg>Cambia ruolo</button>
-        <hr>
-        <button id="quit" class="danger"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10"/></svg>Esci da Ponte</button>
+        </span>
       </div>
+      <label class="setrow" id="ripple"><span class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="2"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="10"/></svg></span><span class="st"><b>Cerchi intorno al puntatore</b><small>A ogni passaggio da un computer all'altro, per ritrovare subito la freccia.</small></span><span class="switch" id="ripplesw"></span></label>
     </div>
-  </div>
 
-  <div id="alert"></div>
-  <div id="update"></div>
+    <div class="card setcard">
+      <h3>Questo computer</h3>
+      <div class="setrow"><span class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></span><span class="st"><b>Nome</b><small id="setname"></small></span><button class="btn small ghost" id="rename2">Cambia</button></div>
+      <div class="setrow" id="rolerow"><span class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 7h11l-3-3M17 17H6l3 3"/></svg></span><span class="st"><b>Ruolo</b><small id="setrole"></small></span><button class="btn small ghost" id="changerole">Cambia</button></div>
+    </div>
+
+    <div class="card setcard">
+      <h3>Assistenza</h3>
+      <div class="setrow"><span class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg></span><span class="st"><b>Log per segnalare un problema</b><small>Da allegare alla segnalazione su GitHub.</small></span><button class="btn small ghost" id="getlog">Scarica</button></div>
+      <div class="setrow"><span class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5"/></svg></span><span class="st"><b>Versione</b><small id="setver"></small></span><button class="btn small ghost" id="checkupdate">Cerca aggiornamenti</button></div>
+      <div class="setrow"><span class="si danger"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10"/></svg></span><span class="st"><b>Esci da Ponte</b><small>Mouse e tastiera tornano a funzionare solo su ciascun computer.</small></span><button class="btn small ghost danger" id="quit">Esci</button></div>
+    </div>
+  </section>
 
   <!-- choose a role -->
   <section id="v-welcome" hidden>
@@ -323,6 +364,7 @@ kbd{display:inline-block;font-family:inherit;font-weight:600;font-size:12.5px;li
 
 <script>
 let picking = false; // the color window is open
+let settingsOpen = false;
 
 const TOKEN = "__TOKEN__";
 const $ = s => document.querySelector(s);
@@ -382,11 +424,16 @@ function render() {
   // and the one chosen could not be confirmed.
   if (S.color && !picking) $("#colorpick").value = S.color;
   $("#ripple").hidden = !S.role || S.os !== "windows";
-  $("#changerole").hidden = !S.role;
-  $("#v-welcome").hidden = !!S.role;
-  $("#v-share").hidden = S.role !== "share";
-  $("#v-recv").hidden = S.role !== "receive";
-  $("#bgnote").hidden = !S.role;
+  $("#rolerow").hidden = !S.role;
+  $("#setrole").textContent = S.role === "share" ? "Ha mouse e tastiera e li condivide" : "Riceve mouse e tastiera dall'altro computer";
+  $("#setname").textContent = S.name;
+  $("#setver").textContent = "Ponte " + (S.version === "dev" ? "dev" : S.version);
+  $("#menubtn").classList.toggle("on", settingsOpen);
+  $("#v-settings").hidden = !settingsOpen;
+  $("#v-welcome").hidden = settingsOpen || !!S.role;
+  $("#v-share").hidden = settingsOpen || S.role !== "share";
+  $("#v-recv").hidden = settingsOpen || S.role !== "receive";
+  $("#bgnote").hidden = settingsOpen || !S.role;
   $("#bgnote").textContent = S.os === "windows"
     ? "Puoi chiudere questa finestra: Ponte resta attivo nell'area di notifica, vicino all'orologio."
     : "Puoi chiudere questa finestra: Ponte continua a funzionare. Per riaprirla avvia di nuovo Ponte.";
@@ -453,7 +500,7 @@ function renderShare() {
 function clipTip() {
   if (!S.clipboard) return "";
   const txt = S.clipboardOK
-    ? "Il testo che copi su un computer si incolla anche sull'altro."
+    ? (S.os === "windows" ? "Il testo e i file che copi su un computer si incollano anche sull'altro." : "Il testo che copi su un computer si incolla anche sull'altro.")
     : "Per condividere il testo copiato installa <b>xclip</b> (X11) o <b>wl-clipboard</b> (Wayland) su questo computer.";
   return `<div class="tip" style="text-align:left">${icon.clip}<span>${txt}</span></div>`;
 }
@@ -499,8 +546,7 @@ document.addEventListener("change", async e => {
 });
 document.addEventListener("click", async e => {
   const t = e.target.closest("[data-connect]") || e.target.closest("button, label");
-  if (!t) { $("#pop").classList.remove("open"); return; }
-  if (t.id !== "menubtn" && !t.closest("#pop")) $("#pop").classList.remove("open");
+  if (!t) return;
   if (t.dataset.role) { S = await api("/api/role", {role: t.dataset.role}); render(); }
   else if (t.dataset.edge) { S = await api("/api/edge", {edge: t.dataset.edge}); render(); }
   else if (t.dataset.forget) {
@@ -511,7 +557,17 @@ document.addEventListener("click", async e => {
     if (t.dataset.paired) { S = await api("/api/connect", {id: f.id, addr: f.addr}); render(); }
     else openCode(f);
   }
-  else if (t.id === "menubtn") $("#pop").classList.toggle("open");
+  else if (t.id === "menubtn") { settingsOpen = !settingsOpen; render(); scrollTo(0, 0); }
+  else if (t.id === "settingsback") { settingsOpen = false; render(); }
+  else if (t.id === "rename2") { $("#nameinput").value = S.name; openVeil("nameveil"); setTimeout(() => $("#nameinput").select(), 50); }
+  else if (t.id === "checkupdate") {
+    t.disabled = true; t.textContent = "Cerco…";
+    const r = await api("/api/checkupdate", {});
+    t.disabled = false; t.textContent = "Cerca aggiornamenti";
+    if (r.error) toast("Non riesco a controllare: " + r.error);
+    else if (r.update) { S.update = r.update; render(); toast("È disponibile Ponte " + r.update); }
+    else toast("Hai già la versione più recente");
+  }
   else if (t.id === "service") {
     e.preventDefault();
     const on = S.service !== "on";
@@ -530,11 +586,11 @@ document.addEventListener("click", async e => {
     else { S = r; render(); toast(on ? "Ponte partirà come amministratore" : "Ponte partirà di nuovo normalmente"); }
   }
   else if (t.id === "autostart") { e.preventDefault(); S = await api("/api/autostart", {on: S.autostart ? "0" : "1"}); render(); toast(S.autostart ? "Ponte partirà insieme al computer" : "Avvio automatico disattivato"); }
-  else if (t.id === "clipboard") { e.preventDefault(); S = await api("/api/clipboard", {on: S.clipboard ? "0" : "1"}); render(); toast(S.clipboard ? "Il testo copiato passa da un computer all'altro" : "Condivisione del testo copiato disattivata"); }
+  else if (t.id === "clipboard") { e.preventDefault(); S = await api("/api/clipboard", {on: S.clipboard ? "0" : "1"}); render(); toast(S.clipboard ? "Testo e file copiati passano da un computer all'altro" : "Condivisione di testo e file disattivata"); }
   else if (t.id === "ripple") { e.preventDefault(); S = await api("/api/ripple", {on: S.ripple ? "0" : "1"}); render(); toast(S.ripple ? "Il puntatore si mostra con dei cerchi a ogni passaggio" : "Cerchi intorno al puntatore disattivati"); }
   else if (t.dataset.color !== undefined) { S = await api("/api/color", {color: t.dataset.color}); render(); }
   else if (t.id === "getlog") { location.href = "/ponte-log.txt?t=" + TOKEN; toast("Log salvato in Download: allegalo alla segnalazione su github.com/romarcis/ponte/issues"); }
-  else if (t.id === "changerole") { S = await api("/api/role", {role: ""}); render(); }
+  else if (t.id === "changerole") { settingsOpen = false; S = await api("/api/role", {role: ""}); render(); }
   else if (t.id === "quit") { await api("/api/quit", {}); document.body.innerHTML = '<div class="app"><div class="card center" style="margin-top:80px"><h2>Ponte è stato chiuso</h2><p class="muted">Il mouse e la tastiera tornano a funzionare solo su ciascun computer.</p></div></div>'; clearInterval(timer); }
   else if (t.id === "doupdate") { t.disabled = true; t.textContent = "Scarico…"; const r = await api("/api/update", {}); if (r.error) { toast("Aggiornamento non riuscito: " + r.error); t.disabled = false; t.textContent = "Aggiorna e riavvia"; } else toast("Aggiornato: Ponte si sta riavviando…"); }
   else if (t.id === "retry") { S = await api("/api/role", {role: S.role}); render(); }
@@ -550,7 +606,7 @@ document.addEventListener("click", async e => {
 function openVeil(id) { $("#" + id).classList.add("open"); }
 function closeVeils() { document.querySelectorAll(".veil").forEach(v => v.classList.remove("open")); }
 document.addEventListener("keydown", e => {
-  if (e.key === "Escape") closeVeils();
+  if (e.key === "Escape") { if (document.querySelector(".veil.open")) closeVeils(); else if (settingsOpen) { settingsOpen = false; render(); } }
   if (e.key === "Enter" && $("#addrveil").classList.contains("open")) submitAddr();
   if (e.key === "Enter" && $("#nameveil").classList.contains("open")) submitName();
 });
