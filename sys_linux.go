@@ -60,3 +60,5 @@ udevadm settle || true
 	}
 	return nil
 }
+
+func logCursor() {}

@@ -42,3 +42,5 @@ func autostartEnabled() bool  { return false }
 func setAutostart(bool) error { return errors.New("non supportato") }
 func canFixPermissions() bool { return false }
 func fixPermissions() error   { return errors.New("non supportato") }
+
+func logCursor() {}
