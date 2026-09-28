@@ -29,6 +29,7 @@ type config struct {
 	LastServer    string                   `json:"last_server"`
 	UIToken       string                   `json:"ui_token"`
 	NoClipboard   bool                     `json:"no_clipboard"`
+	NoRipple      bool                     `json:"no_ripple"`
 	TrayHintShown bool                     `json:"tray_hint_shown"`
 	Clients       map[string]*pairedClient `json:"clients"`
 	Servers       map[string]*pairedServer `json:"servers"`

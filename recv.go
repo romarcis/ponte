@@ -280,6 +280,9 @@ func (r *recvCtl) session(req *connectReq) error {
 			x, y := rb.i32(), rb.i32()
 			r.app.setState("active", name, peerOS)
 			r.inj.MouseAbs(int(x), int(y))
+			if r.app.rippleOn() {
+				showRipple(int(x), int(y))
+			}
 		case msgLeave:
 			release()
 			r.app.setState("connected", name, peerOS)

@@ -205,6 +205,7 @@ kbd{display:inline-block;font-family:inherit;font-weight:600;font-size:12.5px;li
       <div class="pop" id="pop">
         <label id="autostart"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v9M6.3 7.3a8 8 0 1 0 11.4 0"/></svg>Avvia con il computer<span class="switch" id="autosw"></span></label>
         <label id="clipboard"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9 4h6v3H9zM9 12h6M9 16h4"/></svg>Condividi il testo copiato<span class="switch" id="clipsw"></span></label>
+        <label id="ripple"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="2"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="10"/></svg>Cerchi intorno al puntatore quando arriva<span class="switch" id="ripplesw"></span></label>
         <button id="changerole"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 7h11l-3-3M17 17H6l3 3"/></svg>Cambia ruolo</button>
         <hr>
         <button id="quit" class="danger"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10"/></svg>Esci da Ponte</button>
@@ -342,6 +343,8 @@ function render() {
   $("#myname").textContent = S.name;
   $("#autosw").classList.toggle("on", S.autostart);
   $("#clipsw").classList.toggle("on", S.clipboard);
+  $("#ripplesw").classList.toggle("on", S.ripple);
+  $("#ripple").hidden = S.role !== "receive" || S.os !== "windows";
   $("#changerole").hidden = !S.role;
   $("#v-welcome").hidden = !!S.role;
   $("#v-share").hidden = S.role !== "share";
@@ -470,6 +473,7 @@ document.addEventListener("click", async e => {
   else if (t.id === "menubtn") $("#pop").classList.toggle("open");
   else if (t.id === "autostart") { e.preventDefault(); S = await api("/api/autostart", {on: S.autostart ? "0" : "1"}); render(); toast(S.autostart ? "Ponte partirà insieme al computer" : "Avvio automatico disattivato"); }
   else if (t.id === "clipboard") { e.preventDefault(); S = await api("/api/clipboard", {on: S.clipboard ? "0" : "1"}); render(); toast(S.clipboard ? "Il testo copiato passa da un computer all'altro" : "Condivisione del testo copiato disattivata"); }
+  else if (t.id === "ripple") { e.preventDefault(); S = await api("/api/ripple", {on: S.ripple ? "0" : "1"}); render(); toast(S.ripple ? "Il puntatore si mostra con dei cerchi quando arriva" : "Cerchi intorno al puntatore disattivati"); }
   else if (t.id === "changerole") { S = await api("/api/role", {role: ""}); render(); }
   else if (t.id === "quit") { await api("/api/quit", {}); document.body.innerHTML = '<div class="app"><div class="card center" style="margin-top:80px"><h2>Ponte è stato chiuso</h2><p class="muted">Il mouse e la tastiera tornano a funzionare solo su ciascun computer.</p></div></div>'; clearInterval(timer); }
   else if (t.id === "retry") { S = await api("/api/role", {role: S.role}); render(); }

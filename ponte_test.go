@@ -212,3 +212,24 @@ func TestEndToEnd(t *testing.T) {
 	}
 	waitFor(t, "stale pairing reported", func() bool { return cli.status().Error == "L'abbinamento non è più valido" })
 }
+
+func TestRippleFrame(t *testing.T) {
+	const size = 100
+	buf := make([]uint32, size*size)
+	lit := func() (n int) {
+		for _, p := range buf {
+			if p>>24 != 0 {
+				n++
+			}
+		}
+		return
+	}
+	rippleFrame(buf, size, 0.3, 4)
+	if lit() == 0 || buf[0] != 0 || buf[size/2*size+size/2] != 0 {
+		t.Fatal("expected a ring, clear corners and center mid-animation")
+	}
+	rippleFrame(buf, size, 1, 4)
+	if lit() != 0 {
+		t.Fatal("circles should be gone at the end")
+	}
+}

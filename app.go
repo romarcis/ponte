@@ -54,6 +54,7 @@ type status struct {
 	Target      string        `json:"target"`
 	Clipboard   bool          `json:"clipboard"`
 	ClipboardOK bool          `json:"clipboardOK"`
+	Ripple      bool          `json:"ripple"`
 }
 
 // version is set at build time (build.sh, from the release tag).
@@ -74,7 +75,7 @@ func (a *App) status() status {
 		Peer: a.peerName, PeerOS: a.peerOS, Edge: a.cfg.Edge, EdgeSwitch: a.edgeSwitch,
 		Error: a.errMsg, ErrorHelp: a.errHelp, Target: a.cfg.LastServer,
 		Found: []foundServer{}, Clients: []peerView{}, Servers: []peerView{},
-		Clipboard: !a.cfg.NoClipboard, ClipboardOK: a.clipOK,
+		Clipboard: !a.cfg.NoClipboard, ClipboardOK: a.clipOK, Ripple: !a.cfg.NoRipple,
 	}
 	for id, c := range a.cfg.Clients {
 		s.Clients = append(s.Clients, peerView{id, c.Name, c.OS})
@@ -195,6 +196,19 @@ func (a *App) clipboardOn() bool {
 func (a *App) setClipboard(on bool) {
 	a.mu.Lock()
 	a.cfg.NoClipboard = !on
+	a.cfg.save()
+	a.mu.Unlock()
+}
+
+func (a *App) rippleOn() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return !a.cfg.NoRipple
+}
+
+func (a *App) setRipple(on bool) {
+	a.mu.Lock()
+	a.cfg.NoRipple = !on
 	a.cfg.save()
 	a.mu.Unlock()
 }

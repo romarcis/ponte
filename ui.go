@@ -63,6 +63,7 @@ func serveUI(ln net.Listener, app *App) {
 		return state()
 	})
 	api("POST /api/clipboard", func(b map[string]string) any { app.setClipboard(b["on"] == "1"); return state() })
+	api("POST /api/ripple", func(b map[string]string) any { app.setRipple(b["on"] == "1"); return state() })
 	api("POST /api/forget", func(b map[string]string) any { app.forget(b["id"]); return state() })
 	api("POST /api/autostart", func(b map[string]string) any {
 		if err := setAutostart(b["on"] == "1"); err != nil {
