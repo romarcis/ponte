@@ -294,7 +294,7 @@ func (r *recvCtl) session(req *connectReq) (err error) {
 		switch msg[0] {
 		case msgBye:
 			return nil
-		case msgClipboard:
+		case msgClipboard, msgFileStart, msgFileEntry, msgFileData, msgFileEnd:
 			cs.received(msg)
 		case msgPing:
 			if cs, ok := r.inj.(cursorShower); ok {

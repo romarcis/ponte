@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"image"
 	"image/png"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -294,5 +296,47 @@ func TestNewer(t *testing.T) {
 		if newer(c.a, c.b) != c.want {
 			t.Errorf("newer(%q, %q) != %v", c.a, c.b, c.want)
 		}
+	}
+}
+
+type testFileClip struct{ files []string }
+
+func (c *testFileClip) Get() (string, bool)     { return "", false }
+func (c *testFileClip) Set(string)              {}
+func (c *testFileClip) Available() bool         { return true }
+func (c *testFileClip) Files() ([]string, bool) { return nil, false }
+func (c *testFileClip) SetFiles(paths []string) { c.files = paths }
+
+func TestSendFiles(t *testing.T) {
+	src := t.TempDir()
+	os.MkdirAll(filepath.Join(src, "cartella", "sotto"), 0o700)
+	os.WriteFile(filepath.Join(src, "a.txt"), []byte("ciao"), 0o600)
+	big := bytes.Repeat([]byte("x"), fileChunk+10) // more than one chunk
+	os.WriteFile(filepath.Join(src, "cartella", "sotto", "b.bin"), big, 0o600)
+
+	cb := &testFileClip{}
+	c := &clipSync{app: &App{cfg: &config{}}, cb: cb}
+	sendFiles([]string{filepath.Join(src, "a.txt"), filepath.Join(src, "cartella")}, c.received)
+	if len(cb.files) != 2 {
+		t.Fatalf("clipboard files: %v", cb.files)
+	}
+	if b, _ := os.ReadFile(filepath.Join(inboxDir(), "a.txt")); string(b) != "ciao" {
+		t.Fatalf("a.txt: %q", b)
+	}
+	if b, _ := os.ReadFile(filepath.Join(inboxDir(), "cartella", "sotto", "b.bin")); !bytes.Equal(b, big) {
+		t.Fatalf("b.bin: %d bytes", len(b))
+	}
+
+	// A path leading out of the temporary folder is refused.
+	cb.files = nil
+	c.received([]byte{msgFileStart})
+	c.received(wbuf{msgFileEntry}.u8(0).str("../fuori.txt"))
+	c.received(append(wbuf{msgFileData}, "no"...))
+	c.received(wbuf{msgFileEnd}.u16(1).str("fuori.txt"))
+	if cb.files != nil {
+		t.Fatal("files outside the temporary folder were accepted")
+	}
+	if _, err := os.Stat(filepath.Join(inboxDir(), "..", "fuori.txt")); err == nil {
+		t.Fatal("file written outside the temporary folder")
 	}
 }

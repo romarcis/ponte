@@ -165,7 +165,7 @@ func (s *shareCtl) handshake(c net.Conn) {
 		if err == nil && len(msg) > 0 {
 			p.seen.Store(time.Now().UnixNano())
 			switch msg[0] {
-			case msgClipboard:
+			case msgClipboard, msgFileStart, msgFileEntry, msgFileData, msgFileEnd:
 				cs.received(msg)
 			case msgBye:
 				err = errors.New("chiuso dall'altro computer")

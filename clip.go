@@ -25,6 +25,7 @@ type clipSync struct {
 	cb   clipboard
 	mu   sync.Mutex
 	last string
+	in   inbox // files being received
 }
 
 // startClipSync watches the clipboard until stop is closed, calling send with
@@ -32,6 +33,10 @@ type clipSync struct {
 func startClipSync(app *App, cb clipboard, send func([]byte), stop <-chan struct{}) *clipSync {
 	c := &clipSync{app: app, cb: cb}
 	c.last, _ = cb.Get() // what is already there stays local
+	fc, _ := cb.(fileClipboard)
+	if fc != nil {
+		fc.Files()
+	}
 	go func() {
 		t := time.NewTicker(400 * time.Millisecond)
 		defer t.Stop()
@@ -43,6 +48,11 @@ func startClipSync(app *App, cb clipboard, send func([]byte), stop <-chan struct
 			}
 			if !app.clipboardOn() {
 				continue
+			}
+			if fc != nil {
+				if paths, changed := fc.Files(); changed && len(paths) > 0 {
+					sendFiles(paths, send)
+				}
 			}
 			text, ok := cb.Get()
 			if !ok || text == "" || len(text) > maxClipboard {
@@ -61,6 +71,10 @@ func startClipSync(app *App, cb clipboard, send func([]byte), stop <-chan struct
 }
 
 func (c *clipSync) received(msg []byte) {
+	if msg[0] != msgClipboard {
+		c.receivedFiles(msg)
+		return
+	}
 	r := &rbuf{b: msg[1:]}
 	n := r.u32()
 	if n > maxClipboard {

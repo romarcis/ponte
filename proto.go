@@ -19,6 +19,13 @@ const (
 	msgClipboard = 10 // text u32 length + UTF-8 bytes, both directions
 	msgBye       = 11 // the sender is closing Ponte
 	msgBlocked   = 12 // C->S: Windows refuses the replayed input; reason string
+
+	// Copied files, both directions, in this order: start, then for each
+	// file or folder an entry followed by its data, then end.
+	msgFileStart = 13
+	msgFileEntry = 14 // dir u8, path string (relative, with /)
+	msgFileData  = 15 // raw bytes of the current file
+	msgFileEnd   = 16 // count u16, names string: what goes on the clipboard
 )
 
 // Mouse buttons.
