@@ -6,10 +6,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 	"unicode/utf16"
+	"unsafe"
 )
 
 // Windows ignores the input Ponte replays while a program run as
@@ -69,15 +72,55 @@ func setAdminStart(on bool) error {
 	if err != nil {
 		return err
 	}
-	q := func(s string) string { return "'" + strings.ReplaceAll(s, "'", "''") + "'" }
-	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command",
-		"$p = Start-Process -FilePath "+q(exe)+" -ArgumentList "+q(arg)+" -Verb RunAs -Wait -PassThru; exit $p.ExitCode")
-	hideConsole(cmd)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		if strings.Contains(string(out), "cancel") || strings.Contains(string(out), "annullat") {
+	return runAsAdmin(exe, arg)
+}
+
+// shellExecuteInfo is SHELLEXECUTEINFOW.
+type shellExecuteInfo struct {
+	size                   uint32
+	mask                   uint32
+	hwnd                   uintptr
+	verb, file, params     *uint16
+	dir                    *uint16
+	show                   int32
+	instApp, idList        uintptr
+	class                  *uint16
+	keyClass               uintptr
+	hotKey                 uint32
+	iconOrMonitor, process uintptr
+}
+
+var (
+	pShellExecuteEx      = shell32.NewProc("ShellExecuteExW")
+	pCoInitializeEx      = syscall.NewLazyDLL("ole32.dll").NewProc("CoInitializeEx")
+	pWaitForSingleObject = kernel32.NewProc("WaitForSingleObject")
+	pGetExitCodeProcess  = kernel32.NewProc("GetExitCodeProcess")
+)
+
+// runAsAdmin runs exe with arg as administrator and waits for it. The
+// request is tied to Ponte's window, so that Windows shows its confirmation
+// in front instead of only flashing it in the taskbar.
+func runAsAdmin(exe, arg string) error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	pCoInitializeEx.Call(0, 0x2|0x4) // COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE
+	verb, _ := syscall.UTF16PtrFromString("runas")
+	file, _ := syscall.UTF16PtrFromString(exe)
+	params, _ := syscall.UTF16PtrFromString(arg)
+	in := shellExecuteInfo{mask: 0x40 | 0x100, hwnd: gui.mainHwnd, verb: verb, file: file, params: params} // SEE_MASK_NOCLOSEPROCESS | SEE_MASK_NOASYNC
+	in.size = uint32(unsafe.Sizeof(in))
+	if r, _, err := pShellExecuteEx.Call(uintptr(unsafe.Pointer(&in))); r == 0 {
+		if err == syscall.Errno(1223) { // ERROR_CANCELLED
 			return errors.New("conferma di amministratore annullata")
 		}
-		return errors.New("conferma di amministratore non data o non riuscita")
+		return err
+	}
+	defer pCloseHandle.Call(in.process)
+	pWaitForSingleObject.Call(in.process, 0xFFFFFFFF)
+	var code uint32
+	pGetExitCodeProcess.Call(in.process, uintptr(unsafe.Pointer(&code)))
+	if code != 0 {
+		return errors.New("non riuscito, i dettagli sono nel log")
 	}
 	return nil
 }
