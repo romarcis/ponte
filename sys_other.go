@@ -44,3 +44,5 @@ func canFixPermissions() bool { return false }
 func fixPermissions() error   { return errors.New("non supportato") }
 
 func logCursor() {}
+
+func inputRefused() bool { return false }

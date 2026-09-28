@@ -269,7 +269,18 @@ func (r *recvCtl) session(req *connectReq) (err error) {
 	}
 	defer release()
 
+	active, refused := false, false
 	for {
+		// Windows refuses replayed input on the lock screen and while an
+		// administrator prompt is shown: tell the other computer, so it
+		// takes its mouse back.
+		if active && !refused && inputRefused() {
+			refused = true
+			logf("   lo dico a %s, che riprende il suo mouse", name)
+			if err := sc.WriteMsg([]byte{msgBlocked}); err != nil {
+				return err
+			}
+		}
 		msg, err := sc.ReadMsg(peerTimeout + time.Second)
 		if err != nil {
 			return err
@@ -292,6 +303,7 @@ func (r *recvCtl) session(req *connectReq) (err error) {
 			}
 		case msgEnter:
 			x, y := rb.i32(), rb.i32()
+			active, refused = true, false
 			r.app.setState("active", name, peerOS)
 			logf("-> %s usa questo computer", name)
 			if cs, ok := r.inj.(cursorShower); ok {
@@ -303,6 +315,7 @@ func (r *recvCtl) session(req *connectReq) (err error) {
 				showRipple(r.app.rippleRGB())
 			}
 		case msgLeave:
+			active = false
 			release()
 			r.app.setState("connected", name, peerOS)
 			logf("<- %s torna al suo schermo", name)

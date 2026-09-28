@@ -64,6 +64,7 @@ const (
 	wmShowMain      = wmApp + 12
 	wmExitApp       = wmApp + 13
 	wmColor         = wmApp + 14
+	wmNotify        = wmApp + 15
 	wmSetIcon       = 0x0080
 	wmLButtonUpMsg  = 0x0202
 	wmRButtonUpMsg  = 0x0205
@@ -145,6 +146,8 @@ var gui struct {
 	tip       string
 	reAdd     uint32 // "TaskbarCreated": Explorer restarted
 	dpi       int
+	noteTitle string // notification waiting to be shown (notify)
+	noteText  string
 }
 
 func wstr(s string) *uint16 { p, _ := syscall.UTF16PtrFromString(s); return p }
@@ -323,6 +326,12 @@ func trayProc(hwnd, msg, wp, lp uintptr) uintptr {
 	case msg == wmColor:
 		reloadIcons()
 		return 0
+	case msg == wmNotify:
+		gui.mu.Lock()
+		title, text := gui.noteTitle, gui.noteText
+		gui.mu.Unlock()
+		trayBalloon(title, text)
+		return 0
 	case msg == wmTimer:
 		updateTrayTip()
 		return 0
@@ -466,4 +475,12 @@ func setWindowIcons() {
 		pSendMessage.Call(gui.mainHwnd, wmSetIcon, 1, gui.iconBig)
 		pSendMessage.Call(gui.mainHwnd, wmSetIcon, 0, gui.iconSmall)
 	}
+}
+
+// notify shows a notification next to the clock.
+func notify(title, text string) {
+	gui.mu.Lock()
+	gui.noteTitle, gui.noteText = title, text
+	gui.mu.Unlock()
+	pPostMessage.Call(gui.trayHwnd, wmNotify, 0, 0)
 }

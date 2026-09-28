@@ -670,6 +670,8 @@ func (w *winInjector) Key(code uint16, state uint8) {
 
 var inputBlocked atomic.Bool
 
+func inputRefused() bool { return inputBlocked.Load() }
+
 // sendInput replays one event. Windows refuses it on the lock screen and
 // while an administrator prompt is shown; the log tells when.
 func sendInput(in unsafe.Pointer, size uintptr) {

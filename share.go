@@ -20,6 +20,7 @@ type shareCtl struct {
 	newCl  chan *peer
 	gone   chan *peer
 	dropID chan string
+	refuse chan *peer // the peer cannot replay input right now
 	stop   chan struct{}
 	done   chan struct{}
 
@@ -58,6 +59,7 @@ func startShare(a *App) (*shareCtl, error) {
 		newCl:   make(chan *peer),
 		gone:    make(chan *peer),
 		dropID:  make(chan string),
+		refuse:  make(chan *peer),
 		stop:    make(chan struct{}),
 		done:    make(chan struct{}),
 		local:   map[uint16]time.Time{},
@@ -162,6 +164,11 @@ func (s *shareCtl) handshake(c net.Conn) {
 				cs.received(msg)
 			case msgBye:
 				err = errors.New("chiuso dall'altro computer")
+			case msgBlocked:
+				select {
+				case s.refuse <- p:
+				case <-s.stop:
+				}
 			}
 		}
 		if err != nil {
@@ -202,6 +209,15 @@ func (s *shareCtl) loop() {
 				s.cl = nil
 				s.app.setState("waiting", "", "")
 				logf("scollegato %s", p.name)
+			}
+		case p := <-s.refuse:
+			// An administrator prompt or the lock screen on the other
+			// computer: nothing can be done there from here, so give the
+			// mouse back instead of leaving it stuck.
+			if p == s.cl && s.remote {
+				s.leave(true, p.name+" non accetta input")
+				notify(p.name+" non accetta il mouse",
+					"Su "+p.name+" c'è una richiesta di amministratore o la schermata di blocco, che Ponte non può comandare. Il mouse è tornato qui.")
 			}
 		case id := <-s.dropID:
 			if s.cl != nil && s.cl.id == id {

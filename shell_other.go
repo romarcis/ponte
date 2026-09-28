@@ -27,6 +27,8 @@ func showWindow() { openWindow(shellURL) }
 
 func colorChanged() {}
 
+func notify(title, text string) { logf("%s: %s", title, text) }
+
 func quitApp(app *App) {
 	app.shutdown()
 	os.Exit(0)
