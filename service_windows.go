@@ -93,6 +93,17 @@ func serviceLog() {
 // ---------- install ----------
 
 func installService() error {
+	err := installOrUpdateService()
+	if err != nil {
+		serviceNote("installazione del servizio non riuscita: %v", err)
+	}
+	return err
+}
+
+// installOrUpdateService updates the service in place when it exists:
+// deleting and creating it again fails while anything still holds the old
+// one open, and left a Legion Go with no service after an update.
+func installOrUpdateService() error {
 	exe, err := os.Executable()
 	if err != nil {
 		return err
@@ -102,33 +113,70 @@ func installService() error {
 		return err
 	}
 	defer m.Disconnect()
-	if s, err := m.OpenService(serviceName); err == nil {
-		stopService(s) // replacing an older copy
-		s.Delete()
-		s.Close()
-		time.Sleep(time.Second)
-	}
 	dst := serviceExe()
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 		return err
 	}
-	if err := copyFile(exe, dst); err != nil {
-		return err
+	s, err := m.OpenService(serviceName)
+	if err == nil {
+		defer s.Close()
+		stopService(s)
+		if err := copyFileRetry(exe, dst); err != nil {
+			return err
+		}
+		cfg, err := s.Config()
+		if err != nil {
+			return err
+		}
+		cfg.BinaryPathName = `"` + dst + `" --service`
+		cfg.StartType = mgr.StartAutomatic
+		if err := s.UpdateConfig(cfg); err != nil {
+			return err
+		}
+	} else {
+		if err := copyFileRetry(exe, dst); err != nil {
+			return err
+		}
+		s, err = m.CreateService(serviceName, dst, mgr.Config{
+			DisplayName: "Ponte - mouse e tastiera ovunque",
+			Description: "Permette a Ponte di usare mouse e tastiera dell'altro computer anche sulle richieste di amministratore, sulla schermata di blocco e sulle app avviate come amministratore.",
+			StartType:   mgr.StartAutomatic,
+		}, "--service")
+		if err != nil {
+			return err
+		}
+		defer s.Close()
 	}
-	s, err := m.CreateService(serviceName, dst, mgr.Config{
-		DisplayName: "Ponte - mouse e tastiera ovunque",
-		Description: "Permette a Ponte di usare mouse e tastiera dell'altro computer anche sulle richieste di amministratore, sulla schermata di blocco e sulle app avviate come amministratore.",
-		StartType:   mgr.StartAutomatic,
-	}, "--service")
-	if err != nil {
-		return err
-	}
-	defer s.Close()
 	if err := s.Start(); err != nil {
 		return err
 	}
 	logf("servizio installato (Ponte %s)", version)
 	return nil
+}
+
+// copyFileRetry copies the service's program, waiting for the stopped
+// service and its helpers to let go of the old copy.
+func copyFileRetry(src, dst string) error {
+	var err error
+	for i := 0; i < 20; i++ {
+		if err = copyFile(src, dst); err == nil {
+			return nil
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	return err
+}
+
+// serviceNote adds a line to the service's log from Ponte, which keeps its
+// own log.
+func serviceNote(format string, args ...any) {
+	logf(format, args...)
+	f, err := os.OpenFile(filepath.Join(os.Getenv("ProgramData"), "Ponte", "servizio.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	fmt.Fprintf(f, "%s %s\n", time.Now().Format("2006/01/02 15:04:05"), fmt.Sprintf(format, args...))
 }
 
 func uninstallService() error {
