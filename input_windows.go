@@ -2,7 +2,10 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -670,7 +673,80 @@ func (w *winInjector) Key(code uint16, state uint8) {
 
 var inputBlocked atomic.Bool
 
-func inputRefused() bool { return inputBlocked.Load() }
+var (
+	advapi32                = syscall.NewLazyDLL("advapi32.dll")
+	pOpenProcessToken       = advapi32.NewProc("OpenProcessToken")
+	pGetTokenInformation    = advapi32.NewProc("GetTokenInformation")
+	pOpenProcess            = kernel32.NewProc("OpenProcess")
+	pCloseHandle            = kernel32.NewProc("CloseHandle")
+	pQueryFullProcessImage  = kernel32.NewProc("QueryFullProcessImageNameW")
+	pGetWindowThreadProcess = user32.NewProc("GetWindowThreadProcessId")
+
+	selfElevated = sync.OnceValue(func() bool {
+		h, _, _ := pOpenProcess.Call(0x1000, 0, uintptr(os.Getpid()))
+		defer pCloseHandle.Call(h)
+		return processElevated(h)
+	})
+	front struct {
+		sync.Mutex
+		at   time.Time
+		name string // program in front if it runs as administrator
+	}
+)
+
+// processElevated tells whether the process runs as administrator.
+func processElevated(h uintptr) bool {
+	var tok uintptr
+	if r, _, _ := pOpenProcessToken.Call(h, 0x0008, uintptr(unsafe.Pointer(&tok))); r == 0 { // TOKEN_QUERY
+		return false
+	}
+	defer pCloseHandle.Call(tok)
+	var elevated, n uint32
+	pGetTokenInformation.Call(tok, 20, uintptr(unsafe.Pointer(&elevated)), 4, uintptr(unsafe.Pointer(&n))) // TokenElevation
+	return elevated != 0
+}
+
+// elevatedInFront returns the program in front when it runs as
+// administrator (checked at most twice a second).
+func elevatedInFront() string {
+	front.Lock()
+	defer front.Unlock()
+	if time.Since(front.at) < 500*time.Millisecond {
+		return front.name
+	}
+	front.at, front.name = time.Now(), ""
+	hwnd, _, _ := pGetForegroundWindow.Call()
+	var pid uint32
+	pGetWindowThreadProcess.Call(hwnd, uintptr(unsafe.Pointer(&pid)))
+	h, _, _ := pOpenProcess.Call(0x1000, 0, uintptr(pid)) // PROCESS_QUERY_LIMITED_INFORMATION
+	if h == 0 {
+		return ""
+	}
+	defer pCloseHandle.Call(h)
+	if processElevated(h) {
+		var buf [260]uint16
+		n := uint32(len(buf))
+		pQueryFullProcessImage.Call(h, 0, uintptr(unsafe.Pointer(&buf[0])), uintptr(unsafe.Pointer(&n)))
+		front.name = strings.TrimSuffix(filepath.Base(syscall.UTF16ToString(buf[:n])), ".exe")
+	}
+	return front.name
+}
+
+// refusedReason says why Windows is not taking the input Ponte replays, or
+// "" if it is. A program running as administrator in front discards it
+// silently (Windows protects it from programs that are not), unless Ponte
+// runs as administrator too.
+func refusedReason() string {
+	if inputBlocked.Load() {
+		return "c'è una richiesta di amministratore o la schermata di blocco"
+	}
+	if !selfElevated() {
+		if name := elevatedInFront(); name != "" {
+			return "in primo piano c'è " + name + ", avviato come amministratore"
+		}
+	}
+	return ""
+}
 
 // sendInput replays one event. Windows refuses it on the lock screen and
 // while an administrator prompt is shown; the log tells when.

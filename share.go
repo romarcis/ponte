@@ -20,7 +20,7 @@ type shareCtl struct {
 	newCl  chan *peer
 	gone   chan *peer
 	dropID chan string
-	refuse chan *peer // the peer cannot replay input right now
+	refuse chan refusal // the peer cannot replay input right now
 	stop   chan struct{}
 	done   chan struct{}
 
@@ -42,6 +42,11 @@ type peer struct {
 	seen     atomic.Int64 // last message from the peer (unix nanoseconds)
 }
 
+type refusal struct {
+	p   *peer
+	why string
+}
+
 func (p *peer) close() { p.once.Do(func() { p.sc.Close() }) }
 
 func (p *peer) send(b []byte) {
@@ -59,7 +64,7 @@ func startShare(a *App) (*shareCtl, error) {
 		newCl:   make(chan *peer),
 		gone:    make(chan *peer),
 		dropID:  make(chan string),
-		refuse:  make(chan *peer),
+		refuse:  make(chan refusal),
 		stop:    make(chan struct{}),
 		done:    make(chan struct{}),
 		local:   map[uint16]time.Time{},
@@ -165,8 +170,13 @@ func (s *shareCtl) handshake(c net.Conn) {
 			case msgBye:
 				err = errors.New("chiuso dall'altro computer")
 			case msgBlocked:
+				r := &rbuf{b: msg[1:]}
+				why := r.str()
+				if r.err != nil || why == "" {
+					why = "c'è una richiesta di amministratore o la schermata di blocco"
+				}
 				select {
-				case s.refuse <- p:
+				case s.refuse <- refusal{p, why}:
 				case <-s.stop:
 				}
 			}
@@ -210,14 +220,12 @@ func (s *shareCtl) loop() {
 				s.app.setState("waiting", "", "")
 				logf("scollegato %s", p.name)
 			}
-		case p := <-s.refuse:
-			// An administrator prompt or the lock screen on the other
-			// computer: nothing can be done there from here, so give the
-			// mouse back instead of leaving it stuck.
-			if p == s.cl && s.remote {
-				s.leave(true, p.name+" non accetta input")
-				notify(p.name+" non accetta il mouse",
-					"Su "+p.name+" c'è una richiesta di amministratore o la schermata di blocco, che Ponte non può comandare. Il mouse è tornato qui.")
+		case r := <-s.refuse:
+			// Windows on the other computer discards what Ponte replays:
+			// give the mouse back instead of leaving it stuck.
+			if p := r.p; p == s.cl && s.remote {
+				s.leave(true, p.name+" non accetta input: "+r.why)
+				notify(p.name+" non accetta il mouse", "Su "+p.name+" "+r.why+": Ponte non può comandarlo. Il mouse è tornato qui.")
 			}
 		case id := <-s.dropID:
 			if s.cl != nil && s.cl.id == id {

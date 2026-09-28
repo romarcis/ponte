@@ -271,14 +271,16 @@ func (r *recvCtl) session(req *connectReq) (err error) {
 
 	active, refused := false, false
 	for {
-		// Windows refuses replayed input on the lock screen and while an
-		// administrator prompt is shown: tell the other computer, so it
-		// takes its mouse back.
-		if active && !refused && inputRefused() {
-			refused = true
-			logf("   lo dico a %s, che riprende il suo mouse", name)
-			if err := sc.WriteMsg([]byte{msgBlocked}); err != nil {
-				return err
+		// When Windows refuses the replayed input (administrator prompt,
+		// lock screen, a program running as administrator in front), tell
+		// the other computer, so it takes its mouse back.
+		if active && !refused {
+			if why := refusedReason(); why != "" {
+				refused = true
+				logf("   Windows scarta l'input di Ponte: %s; lo dico a %s, che riprende il suo mouse", why, name)
+				if err := sc.WriteMsg(wbuf{msgBlocked}.str(why)); err != nil {
+					return err
+				}
 			}
 		}
 		msg, err := sc.ReadMsg(peerTimeout + time.Second)

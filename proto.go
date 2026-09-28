@@ -18,7 +18,7 @@ const (
 	msgPing      = 9
 	msgClipboard = 10 // text u32 length + UTF-8 bytes, both directions
 	msgBye       = 11 // the sender is closing Ponte
-	msgBlocked   = 12 // C->S: Windows refuses the replayed input (administrator prompt, lock screen)
+	msgBlocked   = 12 // C->S: Windows refuses the replayed input; reason string
 )
 
 // Mouse buttons.

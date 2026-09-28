@@ -63,4 +63,4 @@ udevadm settle || true
 
 func logCursor() {}
 
-func inputRefused() bool { return false }
+func refusedReason() string { return "" }
