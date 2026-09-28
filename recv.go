@@ -296,7 +296,7 @@ func (r *recvCtl) session(req *connectReq) (err error) {
 			go logCursor()
 			r.inj.MouseAbs(int(x), int(y))
 			if r.app.rippleOn() {
-				showRipple(int(x), int(y), r.app.rippleRGB())
+				showRipple(r.app.rippleRGB())
 			}
 		case msgLeave:
 			release()

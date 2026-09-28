@@ -402,4 +402,7 @@ func (s *shareCtl) leave(warp bool, why string) {
 		}
 		s.cap.Warp(x, y)
 	}
+	if s.app.rippleOn() {
+		showRipple(s.app.rippleRGB())
+	}
 }

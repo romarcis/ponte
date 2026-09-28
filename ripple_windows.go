@@ -39,20 +39,18 @@ type bitmapInfoHeader struct {
 	clrImportant  uint32
 }
 
-// showRipple shows the circles around x, y (relative to the whole desktop,
-// as for MouseAbs), in color (RGB).
-func showRipple(x, y int, color uint32) {
+// showRipple shows the circles around the pointer, in color (RGB).
+func showRipple(color uint32) {
 	if !rippleBusy.CompareAndSwap(false, true) {
 		return
 	}
-	vx, vy, _, _ := virtualScreen()
 	go func() {
 		defer rippleBusy.Store(false)
-		ripple(vx+x, vy+y, color)
+		ripple(color)
 	}()
 }
 
-func ripple(x, y int, color uint32) {
+func ripple(color uint32) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	inst, _, _ := pGetModuleHandle.Call(0)
@@ -100,13 +98,10 @@ func ripple(x, y int, color uint32) {
 	dim, src := point{int32(size), int32(size)}, point{}
 	var m winMsg
 	for f := 0; f <= frames; f++ {
-		if f > 0 { // follow the pointer as it moves on
-			var pt point
-			pGetCursorPos.Call(uintptr(unsafe.Pointer(&pt)))
-			x, y = int(pt.x), int(pt.y)
-		}
+		var pt point // follow the pointer as it moves on
+		pGetCursorPos.Call(uintptr(unsafe.Pointer(&pt)))
 		rippleFrame(buf, size, float64(f)/frames, width, color)
-		pos := point{int32(x - size/2), int32(y - size/2)}
+		pos := point{pt.x - int32(size/2), pt.y - int32(size/2)}
 		pUpdateLayeredWindow.Call(hwnd, screen, uintptr(unsafe.Pointer(&pos)), uintptr(unsafe.Pointer(&dim)),
 			mem, uintptr(unsafe.Pointer(&src)), 0, uintptr(unsafe.Pointer(&blend)), 2) // ULW_ALPHA
 		if f == 0 {
