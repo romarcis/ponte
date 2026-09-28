@@ -384,6 +384,9 @@ type winInjector struct {
 	saved  mouseKeys // the user's MouseKeys settings, restored afterwards
 	active bool      // this computer is being controlled
 	shown  bool      // the pointer was visible at the last check
+
+	typing      atomic.Bool  // the last input replayed was a key
+	movingSince atomic.Int64 // when the pointer started moving after typing (unix ns)
 }
 
 func newInjector() inputInjector { return &winInjector{} }
@@ -489,6 +492,13 @@ func (w *winInjector) CheckCursor() {
 		return
 	}
 	shown := ci.flags&1 != 0 // CURSOR_SHOWING
+	if !shown && (w.typing.Load() || time.Since(time.Unix(0, w.movingSince.Load())) < 300*time.Millisecond) {
+		// Windows hides the pointer while typing and shows it again at the
+		// next move: nothing to fix. Turning on the Tasti del mouse here
+		// only got in the way of the keyboard (capital letters stopped
+		// working).
+		return
+	}
 	if shown == w.shown {
 		return
 	}
@@ -530,6 +540,9 @@ func sendMouse(in mouseInput) {
 }
 
 func (w *winInjector) MouseAbs(x, y int) {
+	if w.typing.Swap(false) || w.movingSince.Load() == 0 {
+		w.movingSince.Store(time.Now().UnixNano())
+	}
 	_, _, sw, sh := virtualScreen()
 	nx := int32(x * 65535 / max(sw-1, 1))
 	ny := int32(y * 65535 / max(sh-1, 1))
@@ -572,9 +585,18 @@ func (w *winInjector) Wheel(axis uint8, delta int) {
 	sendMouse(mouseInput{mouseData: uint32(int32(delta)), flags: f})
 }
 
+var vkByCode = map[uint16]uint16{42: 0xA0, 54: 0xA1, 58: 0x14} // left Shift, right Shift, Caps Lock
+
 func (w *winInjector) Key(code uint16, state uint8) {
+	w.typing.Store(true)
 	in := keybdInput{typ: inputKeyboard}
 	switch {
+	case vkByCode[code] != 0:
+		// Shift and Caps Lock go with their virtual key too, so the
+		// accessibility options (Tasti del mouse, Tasti permanenti) that
+		// watch them recognise them.
+		in.vk = vkByCode[code]
+		in.scan = code
 	case code == 119:
 		in.vk = vkPause
 	case code == 69:
