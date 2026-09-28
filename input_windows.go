@@ -716,11 +716,17 @@ func elevatedInFront() string {
 	}
 	front.at, front.name = time.Now(), ""
 	hwnd, _, _ := pGetForegroundWindow.Call()
+	if hwnd == 0 {
+		return ""
+	}
 	var pid uint32
 	pGetWindowThreadProcess.Call(hwnd, uintptr(unsafe.Pointer(&pid)))
 	h, _, _ := pOpenProcess.Call(0x1000, 0, uintptr(pid)) // PROCESS_QUERY_LIMITED_INFORMATION
 	if h == 0 {
-		return ""
+		// Not even readable: it runs as the system (a service's window,
+		// like the settings of Input Director), above administrator.
+		front.name = "un programma di sistema"
+		return front.name
 	}
 	defer pCloseHandle.Call(h)
 	if processElevated(h) {
