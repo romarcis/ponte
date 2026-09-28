@@ -40,19 +40,19 @@ type bitmapInfoHeader struct {
 }
 
 // showRipple shows the circles around x, y (relative to the whole desktop,
-// as for MouseAbs).
-func showRipple(x, y int) {
+// as for MouseAbs), in color (RGB).
+func showRipple(x, y int, color uint32) {
 	if !rippleBusy.CompareAndSwap(false, true) {
 		return
 	}
 	vx, vy, _, _ := virtualScreen()
 	go func() {
 		defer rippleBusy.Store(false)
-		ripple(vx+x, vy+y)
+		ripple(vx+x, vy+y, color)
 	}()
 }
 
-func ripple(x, y int) {
+func ripple(x, y int, color uint32) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	inst, _, _ := pGetModuleHandle.Call(0)
@@ -105,7 +105,7 @@ func ripple(x, y int) {
 			pGetCursorPos.Call(uintptr(unsafe.Pointer(&pt)))
 			x, y = int(pt.x), int(pt.y)
 		}
-		rippleFrame(buf, size, float64(f)/frames, width)
+		rippleFrame(buf, size, float64(f)/frames, width, color)
 		pos := point{int32(x - size/2), int32(y - size/2)}
 		pUpdateLayeredWindow.Call(hwnd, screen, uintptr(unsafe.Pointer(&pos)), uintptr(unsafe.Pointer(&dim)),
 			mem, uintptr(unsafe.Pointer(&src)), 0, uintptr(unsafe.Pointer(&blend)), 2) // ULW_ALPHA

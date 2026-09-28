@@ -7,6 +7,8 @@ import (
 	"math/big"
 	"runtime"
 	"sort"
+	"strconv"
+	"strings"
 	"sync"
 )
 
@@ -55,6 +57,7 @@ type status struct {
 	Clipboard   bool          `json:"clipboard"`
 	ClipboardOK bool          `json:"clipboardOK"`
 	Ripple      bool          `json:"ripple"`
+	Color       string        `json:"color"`
 }
 
 // version is set at build time (build.sh, from the release tag).
@@ -75,7 +78,7 @@ func (a *App) status() status {
 		Peer: a.peerName, PeerOS: a.peerOS, Edge: a.cfg.Edge, EdgeSwitch: a.edgeSwitch,
 		Error: a.errMsg, ErrorHelp: a.errHelp, Target: a.cfg.LastServer,
 		Found: []foundServer{}, Clients: []peerView{}, Servers: []peerView{},
-		Clipboard: !a.cfg.NoClipboard, ClipboardOK: a.clipOK, Ripple: !a.cfg.NoRipple,
+		Clipboard: !a.cfg.NoClipboard, ClipboardOK: a.clipOK, Ripple: !a.cfg.NoRipple, Color: a.cfg.Color,
 	}
 	for id, c := range a.cfg.Clients {
 		s.Clients = append(s.Clients, peerView{id, c.Name, c.OS})
@@ -211,6 +214,37 @@ func (a *App) setRipple(on bool) {
 	a.cfg.NoRipple = !on
 	a.cfg.save()
 	a.mu.Unlock()
+}
+
+// setColor sets the accent color of the window and of the circles; "" is
+// the default.
+func (a *App) setColor(c string) {
+	c = strings.ToLower(c)
+	if c != "" && !validColor(c) {
+		return
+	}
+	a.mu.Lock()
+	a.cfg.Color = c
+	a.cfg.save()
+	a.mu.Unlock()
+}
+
+func validColor(c string) bool {
+	if len(c) != 7 || c[0] != '#' {
+		return false
+	}
+	_, err := strconv.ParseUint(c[1:], 16, 32)
+	return err == nil
+}
+
+// rippleRGB is the color of the circles.
+func (a *App) rippleRGB() uint32 {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if n, err := strconv.ParseUint(strings.TrimPrefix(a.cfg.Color, "#"), 16, 32); err == nil {
+		return uint32(n)
+	}
+	return defaultRippleColor
 }
 
 func (a *App) edge() string {

@@ -224,11 +224,11 @@ func TestRippleFrame(t *testing.T) {
 		}
 		return
 	}
-	rippleFrame(buf, size, 0.3, 4)
+	rippleFrame(buf, size, 0.3, 4, defaultRippleColor)
 	if lit() == 0 || buf[0] != 0 || buf[size/2*size+size/2] != 0 {
 		t.Fatal("expected a ring, clear corners and center mid-animation")
 	}
-	rippleFrame(buf, size, 1, 4)
+	rippleFrame(buf, size, 1, 4, defaultRippleColor)
 	if lit() != 0 {
 		t.Fatal("circles should be gone at the end")
 	}

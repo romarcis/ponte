@@ -289,7 +289,7 @@ func (r *recvCtl) session(req *connectReq) (err error) {
 			logf("-> %s usa questo computer", name)
 			r.inj.MouseAbs(int(x), int(y))
 			if r.app.rippleOn() {
-				showRipple(int(x), int(y))
+				showRipple(int(x), int(y), r.app.rippleRGB())
 			}
 		case msgLeave:
 			release()

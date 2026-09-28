@@ -5,16 +5,16 @@ import "math"
 // Circles drawn around the pointer when it arrives from the other computer.
 
 const (
-	rippleRings = 3
-	rippleColor = 0x5b5bf7 // the window's accent color, RGB
+	rippleRings        = 3
+	defaultRippleColor = 0x5b5bf7 // the window's default accent color, RGB
 )
 
 // rippleFrame fills buf (size×size, premultiplied ARGB) with the circles at
-// time t of the animation, from 0 (start) to 1 (gone).
-func rippleFrame(buf []uint32, size int, t, width float64) {
+// time t of the animation, from 0 (start) to 1 (gone), in color (RGB).
+func rippleFrame(buf []uint32, size int, t, width float64, color uint32) {
 	c := float64(size-1) / 2
 	maxR := c - width
-	cr, cg, cb := float64(rippleColor>>16&0xff), float64(rippleColor>>8&0xff), float64(rippleColor&0xff)
+	cr, cg, cb := float64(color>>16&0xff), float64(color>>8&0xff), float64(color&0xff)
 	for y := 0; y < size; y++ {
 		for x := 0; x < size; x++ {
 			d := math.Hypot(float64(x)-c, float64(y)-c)

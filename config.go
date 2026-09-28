@@ -30,6 +30,7 @@ type config struct {
 	UIToken       string                   `json:"ui_token"`
 	NoClipboard   bool                     `json:"no_clipboard"`
 	NoRipple      bool                     `json:"no_ripple"`
+	Color         string                   `json:"color"` // accent color "#rrggbb", "" = default
 	TrayHintShown bool                     `json:"tray_hint_shown"`
 	Clients       map[string]*pairedClient `json:"clients"`
 	Servers       map[string]*pairedServer `json:"servers"`
