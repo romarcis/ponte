@@ -90,8 +90,8 @@ func (c *clipSync) receivedIn(in *inbox, msg []byte) {
 		return
 	}
 	c.mu.Lock()
+	defer c.mu.Unlock() // several computers may send at once
 	c.last = text
-	c.mu.Unlock()
 	c.cb.Set(text)
 }
 

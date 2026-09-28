@@ -190,7 +190,9 @@ func clientHandshake(c net.Conn, clientID []byte, mode byte, secret, expect []by
 	}
 	proof := make([]byte, 32)
 	if _, err := io.ReadFull(r, proof); err != nil {
-		return nil, nil, errAuth
+		// Not a refusal: the connection dropped, which must never look
+		// like a forgotten pairing.
+		return nil, nil, err
 	}
 	if !hmac.Equal(proof, mac(auth, "S", th[:])) {
 		return nil, nil, errAuth
@@ -239,12 +241,16 @@ func serverHandshake(c net.Conn, serverID []byte, lookup func(mode byte, clientI
 	if _, err := io.ReadFull(r, proof); err != nil {
 		return nil, nil, 0, err
 	}
+	// A refusal is said out loud (a proof of zeros), so the client can
+	// tell it from a dropped connection.
 	secret, ok := lookup(mode, clientID)
 	if !ok {
+		c.Write(make([]byte, 32))
 		return nil, clientID, mode, errAuth
 	}
 	auth := authKeyFor(mode, secret, th[:])
 	if !hmac.Equal(proof, mac(auth, "C", th[:])) {
+		c.Write(make([]byte, 32))
 		return nil, clientID, mode, errAuth
 	}
 	if _, err := c.Write(mac(auth, "S", th[:])); err != nil {

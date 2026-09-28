@@ -171,7 +171,9 @@ type winCapture struct {
 
 var activeCapture atomic.Pointer[winCapture]
 
-func newCapture() inputCapture { return &winCapture{down: map[uint32]bool{}, unknown: map[uint32]bool{}} }
+func newCapture() inputCapture {
+	return &winCapture{down: map[uint32]bool{}, unknown: map[uint32]bool{}}
+}
 
 func (c *winCapture) Start(ch chan<- inputEvent) error {
 	c.ch = ch
@@ -314,7 +316,11 @@ var mouseHookCB = syscall.NewCallback(func(nCode, wParam, lParam uintptr) uintpt
 	grab := c.grab.Load()
 	if m.flags&llmhfInjected != 0 {
 		// Replayed by Ponte (another computer controls this one) or by
-		// another program: not this computer's mouse.
+		// another program: not this computer's mouse. While this computer
+		// controls another one, it stays swallowed as before.
+		if grab {
+			return 1
+		}
 		r, _, _ := pCallNextHookEx.Call(0, nCode, wParam, lParam)
 		return r
 	}

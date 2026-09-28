@@ -26,6 +26,8 @@ type App struct {
 	codeUntil time.Time // wrong codes: no more tries until then
 
 	node *node
+
+	startMu sync.Mutex // one start at a time
 }
 
 // peerView is a computer of the group, as the window shows it.
@@ -79,6 +81,11 @@ func (a *App) status() status {
 	}
 	for id, p := range a.cfg.Peers {
 		s.Peers = append(s.Peers, peerView{ID: id, Name: p.Name, OS: p.OS})
+	}
+	for id := range s.Layout {
+		if _, ok := a.cfg.Peers[id]; !ok && id != s.ID {
+			delete(s.Layout, id) // not known here (yet)
+		}
 	}
 	a.mu.Unlock()
 	sort.Slice(s.Peers, func(i, j int) bool { return s.Peers[i].Name < s.Peers[j].Name })
@@ -140,6 +147,8 @@ func newPairingCode() string {
 // start starts (again) the node: the connections to the other computers
 // and this computer's mouse and keyboard.
 func (a *App) start() error {
+	a.startMu.Lock()
+	defer a.startMu.Unlock()
 	a.shutdown()
 	a.clearError()
 	n, err := startNode(a)
@@ -265,14 +274,19 @@ func (a *App) codeFailed() {
 	}
 }
 
-func (a *App) pairPeer(id, name, os, addr string, key []byte) {
+// pairPeer stores a computer paired with the code (byCode: the code shown
+// here was used, so it changes) or introduced by another one.
+func (a *App) pairPeer(id, name, os, addr string, key []byte, byCode bool) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	a.cfg.Peers[id] = &pairedPeer{Name: name, OS: os, Key: key, Addr: addr}
+	a.cfg.Peers[id] = &pairedPeer{Name: name, OS: os, Key: key, Addr: addr, Since: time.Now().UnixNano()}
+	delete(a.cfg.Gone, id)
 	a.cfg.Layout.place(id, a.cfg.id())
 	a.cfg.save()
-	a.code = newPairingCode()
-	a.codeFails = 0
+	if byCode {
+		a.code = newPairingCode()
+		a.codeFails = 0
+	}
 }
 
 func (a *App) updatePeer(id, name, os, addr string) {
@@ -287,16 +301,68 @@ func (a *App) updatePeer(id, name, os, addr string) {
 	}
 }
 
-func (a *App) removePeer(id string) {
+// removePeer forgets a computer. With when, it was removed from the group
+// at that time, and the others learn it; with bump, here, so the map
+// changes on the others too.
+func (a *App) removePeer(id string, when int64, bump bool) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if _, ok := a.cfg.Peers[id]; !ok {
-		return
+	if when != 0 {
+		if a.cfg.Gone == nil {
+			a.cfg.Gone = map[string]int64{}
+		}
+		a.cfg.Gone[id] = max(a.cfg.Gone[id], when)
 	}
-	delete(a.cfg.Peers, id)
-	delete(a.cfg.Layout.Pos, id)
-	a.cfg.Layout.Stamp = time.Now().UnixNano()
+	if _, ok := a.cfg.Peers[id]; ok {
+		delete(a.cfg.Peers, id)
+		delete(a.cfg.Layout.Pos, id)
+		if bump {
+			a.cfg.Layout.Stamp = nextStamp(a.cfg.Layout.Stamp)
+		}
+	}
 	a.cfg.save()
+}
+
+// nextStamp is the stamp of a change to the map: now, but always after the
+// last one, in case another computer's clock is ahead.
+func nextStamp(last int64) int64 { return max(time.Now().UnixNano(), last+1) }
+
+// members lists the computers of the group and those removed from it.
+func (a *App) members() []byte {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	b := wbuf{msgMembers}.u16(uint16(len(a.cfg.Peers)))
+	for _, id := range sortedKeys(a.cfg.Peers) {
+		p := a.cfg.Peers[id]
+		b = b.str(id).str(p.Name).str(p.OS).str(p.Addr)
+	}
+	b = b.u16(uint16(len(a.cfg.Gone)))
+	for _, id := range sortedKeys(a.cfg.Gone) {
+		b = b.str(id).i64(a.cfg.Gone[id])
+	}
+	return b
+}
+
+// goneSince tells which computers of the group were removed from it after
+// they were paired here.
+func (a *App) goneSince(gone map[string]int64) []string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	var out []string
+	for id, t := range gone {
+		if p, ok := a.cfg.Peers[id]; ok && p.Since < t {
+			out = append(out, id)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+func (a *App) hasPeer(id string) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	_, ok := a.cfg.Peers[id]
+	return ok
 }
 
 func (a *App) peerIDs() []string {
@@ -363,18 +429,21 @@ func (a *App) layoutOrder() []string {
 func (a *App) touchLayout() layout {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	a.cfg.Layout.Stamp = time.Now().UnixNano()
+	a.cfg.Layout.Stamp = nextStamp(a.cfg.Layout.Stamp)
 	a.cfg.save()
 	return a.cfg.Layout.clone()
 }
 
-// adoptLayout takes the map of another computer, keeping only the
-// computers of this group.
+// adoptLayout takes the map of another computer.
 func (a *App) adoptLayout(l layout, self string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	// Computers this one does not know yet stay on it: an introduction
+	// may be on its way.
 	l = l.clone()
-	l.keep(append(sortedKeys(a.cfg.Peers), self), self)
+	for _, id := range append(sortedKeys(a.cfg.Peers), self) {
+		l.place(id, self)
+	}
 	a.cfg.Layout = l
 	a.cfg.save()
 }
@@ -388,7 +457,7 @@ func (a *App) moveScreen(id string, c cell) {
 		return
 	}
 	a.cfg.Layout.move(id, c)
-	a.cfg.Layout.Stamp = time.Now().UnixNano()
+	a.cfg.Layout.Stamp = nextStamp(a.cfg.Layout.Stamp)
 	a.cfg.save()
 	l := a.cfg.Layout.clone()
 	n := a.node
@@ -405,7 +474,7 @@ func (a *App) forget(id string) {
 	if n != nil {
 		n.forget(id)
 	} else {
-		a.removePeer(id)
+		a.removePeer(id, time.Now().UnixNano(), true)
 	}
 }
 

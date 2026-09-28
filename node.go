@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net"
 	"runtime"
+	"sort"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -35,8 +36,9 @@ type link struct {
 	w, h     int
 	addr     string // where it listens
 	version  string
-	dialed   bool // this computer dialed it
-	fresh    bool // it just paired with this computer's code
+	dialed   bool            // this computer dialed it
+	fresh    bool            // it just paired with this computer's code
+	members  map[string]bool // the computers it is paired with, once it said
 	seen     atomic.Int64
 	once     sync.Once
 	in       inbox // files it is sending
@@ -94,6 +96,7 @@ type node struct {
 	lastDial   map[string]time.Time
 	since      map[string]time.Time // when each computer was last linked
 	introduced map[string]time.Time
+	refusals   map[string]int // refusals in a row, per computer
 	errs       map[string]string
 
 	// Controlling another computer.
@@ -112,6 +115,7 @@ type node struct {
 	moves     []time.Time // own mouse motions while controlled
 	lastCheck time.Time
 	moved     time.Time // last motion of this computer's own mouse
+	offEdge   bool      // the pointer left the screen edges since another computer let go
 }
 
 func startNode(a *App) (*node, error) {
@@ -131,12 +135,14 @@ func startNode(a *App) (*node, error) {
 		lastDial:   map[string]time.Time{},
 		since:      map[string]time.Time{},
 		introduced: map[string]time.Time{},
+		refusals:   map[string]int{},
 		errs:       map[string]string{},
 		local:      map[uint16]time.Time{},
 		held:       map[uint16]bool{},
 		heldBtn:    map[uint8]bool{},
 		injKeys:    map[uint16]bool{},
 		injBtns:    map[uint8]bool{},
+		offEdge:    true,
 	}
 	n.all.Store(&[]*link{})
 
@@ -299,6 +305,7 @@ func (n *node) accept(c net.Conn) {
 	}
 	r := &rbuf{b: msg[1:]}
 	l := &link{sc: sc, id: hex.EncodeToString(cid)}
+	l.in.from = l.id
 	l.w, l.h = int(r.i32()), int(r.i32())
 	l.name, l.os = r.str(), r.str()
 	port := int(r.u16())
@@ -313,7 +320,7 @@ func (n *node) accept(c net.Conn) {
 	var key []byte
 	if mode == authModeCode {
 		key = randomBytes(32)
-		n.app.pairPeer(l.id, l.name, l.os, l.addr, key)
+		n.app.pairPeer(l.id, l.name, l.os, l.addr, key, true)
 		l.fresh = true
 		logf("abbinato %s", l.name)
 	} else {
@@ -335,14 +342,18 @@ func (n *node) dial(id, addr, code string) {
 		switch {
 		case err == nil:
 			delete(n.errs, id)
+			delete(n.refusals, id)
 		case errors.Is(err, errAuth) && code != "":
 			n.app.setError("Codice non corretto", "Controlla il codice mostrato sull'altro computer e riprova.")
 		case errors.Is(err, errAuth) && time.Since(n.introduced[id]) < introGrace:
 			// Just introduced: the other computer may not have its key yet.
 		case errors.Is(err, errAuth):
-			// The other computer forgot this one: so does this one.
-			logf("%s non riconosce più questo computer: abbinamento rimosso", n.app.peerName(id))
-			n.forgetLocal(id)
+			// Refused again and again: the other computer forgot this
+			// one, so this one forgets it too.
+			if n.refusals[id]++; n.refusals[id] >= 3 {
+				logf("%s non riconosce più questo computer: abbinamento rimosso", n.app.peerName(id))
+				n.forgetLocal(id, 0, false)
+			}
 		case errors.Is(err, errOldPeer):
 			n.errs[id] = "old"
 		case code != "":
@@ -386,6 +397,7 @@ func (n *node) dialErr(id, addr, code string) error {
 	}
 	r := &rbuf{b: msg[1:]}
 	l := &link{sc: sc, id: hex.EncodeToString(sid), dialed: true}
+	l.in.from = l.id
 	l.name = r.str()
 	key := r.bytes()
 	l.w, l.h = int(r.i32()), int(r.i32())
@@ -401,7 +413,7 @@ func (n *node) dialErr(id, addr, code string) error {
 		l.addr = net.JoinHostPort(host, strconv.Itoa(port))
 	}
 	if len(key) == 32 {
-		n.app.pairPeer(l.id, l.name, l.os, l.addr, key)
+		n.app.pairPeer(l.id, l.name, l.os, l.addr, key, false)
 		logf("abbinato a %s", l.name)
 	} else {
 		n.app.updatePeer(l.id, l.name, l.os, l.addr)
@@ -460,6 +472,17 @@ func (n *node) dialer(l *link) string {
 // added takes a new link. Two computers may dial each other at the same
 // time: both keep the connection opened by the one with the lower ID.
 func (n *node) added(l *link) {
+	if l.fresh {
+		// Put it on the map next to this one, for everybody.
+		defer func() {
+			n.broadcast(encLayout(n.app.touchLayout()))
+			n.broadcast(n.app.members())
+		}()
+	}
+	if !n.app.hasPeer(l.id) {
+		l.close() // removed from the group while connecting
+		return
+	}
 	if old := n.links[l.id]; old != nil {
 		low := min(n.id, l.id)
 		if n.dialer(old) == low && n.dialer(l) != low {
@@ -473,25 +496,73 @@ func (n *node) added(l *link) {
 	delete(n.errs, l.id)
 	logf("collegato %s (%s, %dx%d, Ponte %s)", l.name, l.addr, l.w, l.h, l.version)
 	l.send(encLayout(n.app.layoutCopy()))
+	l.send(n.app.members())
 	n.publish()
-	if l.fresh {
-		n.introduce(l)
-	}
 }
 
-// introduce pairs a computer that just joined with the others of the group
-// this one is linked to, so its code is typed only once; and puts it on the
-// map next to this one.
-func (n *node) introduce(l *link) {
-	for id, o := range n.links {
-		if id == l.id {
-			continue
-		}
-		key := randomBytes(32)
-		o.send(wbuf{msgIntro}.str(l.id).str(l.name).str(l.os).str(l.addr).bytes(key))
-		l.send(wbuf{msgIntro}.str(o.id).str(o.name).str(o.os).str(o.addr).bytes(key))
+// gotMembers learns whom l is paired with. Computers removed from the group
+// while this one was off are forgotten; then computers that should know
+// each other and don't are introduced.
+func (n *node) gotMembers(l *link, msg []byte) {
+	r := &rbuf{b: msg[1:]}
+	members := map[string]bool{}
+	for range int(r.u16()) {
+		id := r.str()
+		r.str()
+		r.str()
+		r.str()
+		members[id] = true
 	}
-	n.broadcast(encLayout(n.app.touchLayout()))
+	gone := map[string]int64{}
+	for range int(r.u16()) {
+		id := r.str()
+		gone[id] = r.i64()
+	}
+	if r.err != nil {
+		return
+	}
+	l.members = members
+	for _, id := range n.app.goneSince(gone) {
+		if id != n.id {
+			logf("%s: %s era stato tolto dal gruppo", l.name, n.app.peerName(id))
+			n.forgetLocal(id, gone[id], false)
+		}
+	}
+	n.introduceMissing()
+}
+
+// introduceMissing pairs the linked computers that do not know each other,
+// so a computer's code is typed only once for the whole group. Of the
+// computers linked here that know both, the one with the lowest ID does it.
+func (n *node) introduceMissing() {
+	ls := make([]*link, 0, len(n.links))
+	for _, l := range n.links {
+		if l.members != nil {
+			ls = append(ls, l)
+		}
+	}
+	sort.Slice(ls, func(i, j int) bool { return ls[i].id < ls[j].id })
+	for i, a := range ls {
+		for _, b := range ls[i+1:] {
+			if a.members[b.id] && b.members[a.id] {
+				continue
+			}
+			lowest := n.id
+			for id := range a.members {
+				if b.members[id] && n.links[id] != nil && id < lowest {
+					lowest = id
+				}
+			}
+			if lowest != n.id {
+				continue
+			}
+			key := randomBytes(32)
+			a.send(wbuf{msgIntro}.str(b.id).str(b.name).str(b.os).str(b.addr).bytes(key))
+			b.send(wbuf{msgIntro}.str(a.id).str(a.name).str(a.os).str(a.addr).bytes(key))
+			a.members[b.id], b.members[a.id] = true, true
+			logf("presento %s e %s", a.name, b.name)
+		}
+	}
 }
 
 // dropLink forgets a link that closed; loop only.
@@ -550,22 +621,30 @@ func (n *node) pair(id, addr, code string) {
 // forget removes a computer from the group, here and on the others.
 func (n *node) forget(id string) {
 	n.call(func() {
+		when := time.Now().UnixNano()
 		for oid, l := range n.links {
 			if oid != id {
-				l.send(wbuf{msgForget}.str(id))
+				l.send(wbuf{msgForget}.str(id).i64(when))
 			}
 		}
-		n.forgetLocal(id)
+		n.forgetLocal(id, when, true)
 		n.broadcast(encLayout(n.app.layoutCopy()))
+		n.broadcast(n.app.members())
 	})
 }
 
-func (n *node) forgetLocal(id string) {
-	n.app.removePeer(id)
+// forgetLocal forgets a computer here; see App.removePeer for when and
+// bump.
+func (n *node) forgetLocal(id string, when int64, bump bool) {
+	n.app.removePeer(id, when, bump)
 	delete(n.errs, id)
+	delete(n.refusals, id)
 	if l := n.links[id]; l != nil {
 		n.dropLink(l, "computer dimenticato")
 		l.close()
+	}
+	for _, l := range n.links {
+		delete(l.members, id)
 	}
 	n.publish()
 }
@@ -630,18 +709,25 @@ func (n *node) handleMsg(l *link, msg []byte) {
 	case msgLayout:
 		n.gotLayout(l, msg)
 	case msgIntro:
+		// Taken when this computer does not know that one, or cannot
+		// reach it with the key it has (they paired while one was off).
 		id, name, os, addr, key := r.str(), r.str(), r.str(), r.str(), r.bytes()
-		if r.err == nil && len(key) == 32 && id != n.id && n.app.peerKey(id) == nil {
-			n.app.pairPeer(id, name, os, addr, key)
+		if r.err == nil && len(key) == 32 && id != n.id && (!n.app.hasPeer(id) || n.links[id] == nil) {
+			n.app.pairPeer(id, name, os, addr, key, false)
 			n.since[id] = time.Time{}
 			n.introduced[id] = time.Now()
+			delete(n.refusals, id)
 			logf("%s presenta %s: abbinati", l.name, name)
+			n.broadcast(n.app.members())
 			n.maintain()
 		}
+	case msgMembers:
+		n.gotMembers(l, msg)
 	case msgForget:
-		if id := r.str(); r.err == nil && id != n.id && n.app.peerKey(id) != nil {
+		id, when := r.str(), r.i64()
+		if r.err == nil && id != n.id && n.app.hasPeer(id) {
 			logf("%s ha tolto %s dal gruppo", l.name, n.app.peerName(id))
-			n.forgetLocal(id)
+			n.forgetLocal(id, when, false)
 		}
 	case msgBlocked:
 		why := r.str()
@@ -697,6 +783,15 @@ func sameLayout(a, b layout) bool {
 // ---------- controlled from another computer ----------
 
 func (n *node) replay(l *link, kind byte, r *rbuf) {
+	if kind == msgEnter && n.inj == nil {
+		l.send(wbuf{msgBlocked}.str("Ponte non può muovere il puntatore di questo computer"))
+		return
+	}
+	if kind == msgEnter && n.target != nil {
+		// Its own mouse is in use here, controlling another computer.
+		l.send([]byte{msgTakeover})
+		return
+	}
 	if n.inj == nil {
 		return
 	}
@@ -791,6 +886,11 @@ func (n *node) release() {
 	}
 	clear(n.injKeys)
 	clear(n.injBtns)
+	if n.by != nil {
+		// The pointer may sit on the edge the other computer left by:
+		// do not send it straight back.
+		n.switched, n.offEdge = time.Now(), false
+	}
 	n.by = nil
 }
 
@@ -924,14 +1024,22 @@ func (n *node) atEdge(x, y int) {
 	bx, by, bw, bh := n.cap.Bounds()
 	fx := float64(x-bx) / float64(max(bw, 1))
 	fy := float64(y-by) / float64(max(bh, 1))
-	for _, e := range []struct {
+	edges := []struct {
 		dir string
 		hit bool
 		f   float64
 	}{
 		{"right", x >= bx+bw-1, fy}, {"left", x <= bx, fy},
 		{"bottom", y >= by+bh-1, fx}, {"top", y <= by, fx},
-	} {
+	}
+	if !edges[0].hit && !edges[1].hit && !edges[2].hit && !edges[3].hit {
+		n.offEdge = true
+		return
+	}
+	if !n.offEdge {
+		return
+	}
+	for _, e := range edges {
 		if !e.hit {
 			continue
 		}

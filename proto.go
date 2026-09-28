@@ -34,7 +34,8 @@ const (
 	msgTakeover = 17 // to the controller: someone uses this computer's own mouse or keyboard
 	msgLayout   = 18 // the screen map: stamp i64, count u16, then id string, x, y int32
 	msgIntro    = 19 // pair with another computer of the group: id, name, os, addr string, key
-	msgForget   = 20 // remove this computer from the group: id string
+	msgForget   = 20 // remove this computer from the group: id string, when i64
+	msgMembers  = 21 // the computers this one is paired with: count u16, then id, name, os, addr; then removed ones: count u16, then id, when i64
 )
 
 // Mouse buttons.

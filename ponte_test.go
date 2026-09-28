@@ -2,9 +2,11 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"image"
 	"image/png"
+	"net"
 	"os"
 	"path/filepath"
 	"sync"
@@ -234,6 +236,16 @@ func TestGroup(t *testing.T) {
 	waitFor(t, "b takes over", func() bool { return b.app.status().State == "ready" && !a.cap.grabbed() })
 
 	// b now controls: its right edge leads to c.
+	// Its pointer was left on the edge towards a: it must move off the
+	// edge before an edge counts again.
+	b.cap.ch <- inputEvent{kind: evMotion}
+	b.cap.ch <- inputEvent{kind: evPos, x: 0, y: 300}
+	time.Sleep(50 * time.Millisecond)
+	if b.cap.grabbed() {
+		t.Fatal("bounced back to a right after taking over")
+	}
+	b.cap.ch <- inputEvent{kind: evMotion}
+	b.cap.ch <- inputEvent{kind: evPos, x: 500, y: 300}
 	b.cap.ch <- inputEvent{kind: evMotion}
 	b.cap.ch <- inputEvent{kind: evPos, x: 999, y: 0}
 	waitFor(t, "b controls c", func() bool { return c.app.status().By == b.id() && b.cap.grabbed() })
@@ -385,5 +397,28 @@ func TestSendFiles(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(inboxDir(), "..", "fuori.txt")); err == nil {
 		t.Fatal("file written outside the temporary folder")
+	}
+}
+
+// A connection that drops during the handshake is not a refusal: only a
+// refusal may make Ponte forget a pairing.
+func TestHandshakeDropIsNotRefusal(t *testing.T) {
+	key := randomBytes(32)
+	for _, refuse := range []bool{false, true} {
+		cli, srv := net.Pipe()
+		go func() {
+			serverHandshake(srv, randomBytes(16), func(byte, []byte) ([]byte, bool) {
+				if !refuse {
+					srv.Close() // gone before answering
+				}
+				return key, !refuse
+			})
+			srv.Close()
+		}()
+		_, _, err := clientHandshake(cli, randomBytes(16), authModeKey, key, nil)
+		if refuse != errors.Is(err, errAuth) {
+			t.Fatalf("refuse=%v: err = %v", refuse, err)
+		}
+		cli.Close()
 	}
 }

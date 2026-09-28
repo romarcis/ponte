@@ -14,6 +14,9 @@ type pairedPeer struct {
 	OS   string `json:"os"`
 	Key  []byte `json:"key"`
 	Addr string `json:"addr,omitempty"` // last address it answered on
+	// Since is when it was paired (unix nanoseconds): a removal from the
+	// group made before that does not apply to it.
+	Since int64 `json:"since,omitempty"`
 }
 
 // Before version 1.4 a computer either shared or received: these are read
@@ -42,6 +45,9 @@ type config struct {
 	AdminDeclined bool                   `json:"admin_declined"` // said no to administrator rights
 	Peers         map[string]*pairedPeer `json:"peers"`
 	Layout        layout                 `json:"layout"`
+	// Gone lists the computers removed from the group and when, so the
+	// computers that were off at the time learn it later.
+	Gone map[string]int64 `json:"gone,omitempty"`
 
 	Role    string                   `json:"role,omitempty"` // before 1.4: "", "share", "receive"
 	Edge    string                   `json:"edge,omitempty"` // before 1.4: where the other screen sat

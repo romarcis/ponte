@@ -96,8 +96,9 @@ func b2u8(b bool) uint8 {
 	return 0
 }
 
-// inbox is the copy being received.
+// inbox is the copy being received from one computer.
 type inbox struct {
+	from  string // the sending computer, for its own folder
 	dir   string
 	f     *os.File
 	ok    bool
@@ -112,7 +113,13 @@ func (c *clipSync) receivedFiles(in *inbox, msg []byte) {
 	case msgFileStart:
 		in.close()
 		_, fc := c.cb.(fileClipboard)
-		*in = inbox{dir: inboxDir(), ok: fc && c.app.clipboardOn()}
+		dir := inboxDir()
+		if in.from != "" {
+			// Each computer has its own folder: two sending at once must
+			// not mix their files.
+			dir = filepath.Join(dir, in.from[:min(8, len(in.from))])
+		}
+		*in = inbox{from: in.from, dir: dir, ok: fc && c.app.clipboardOn()}
 		if in.ok {
 			os.RemoveAll(in.dir) // only the last copy is kept
 			in.ok = os.MkdirAll(in.dir, 0o700) == nil
