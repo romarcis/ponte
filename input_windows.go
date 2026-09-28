@@ -326,8 +326,8 @@ var mouseHookCB = syscall.NewCallback(func(nCode, wParam, lParam uintptr) uintpt
 		if grab {
 			c.grabbedMove(m)
 		} else {
-			c.send(inputEvent{kind: evPos, x: m.pt.x, y: m.pt.y})
 			c.send(inputEvent{kind: evMotion})
+			c.send(inputEvent{kind: evPos, x: m.pt.x, y: m.pt.y})
 		}
 	case wmLButtonDown, wmLButtonUp:
 		c.send(inputEvent{kind: evButton, code: btnLeft, val: b2i(wParam == wmLButtonDown)})

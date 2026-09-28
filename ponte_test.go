@@ -175,6 +175,12 @@ func TestGroup(t *testing.T) {
 	waitFor(t, "c moved on b's map", func() bool { return b.pos(c) == cell{2, 0} && c.pos(c) == cell{2, 0} })
 
 	// a's pointer reaches its right edge: b.
+	a.cap.ch <- inputEvent{kind: evPos, x: 999, y: 400} // moved by another computer
+	time.Sleep(50 * time.Millisecond)
+	if a.cap.grabbed() {
+		t.Fatal("a pointer on the edge but not moved by a's own mouse switched")
+	}
+	a.cap.ch <- inputEvent{kind: evMotion}
 	a.cap.ch <- inputEvent{kind: evPos, x: 999, y: 400}
 	waitFor(t, "enter b", func() bool { return b.inj.last() == "mouse 0 450" })
 	if !a.cap.grabbed() {
@@ -228,6 +234,7 @@ func TestGroup(t *testing.T) {
 	waitFor(t, "b takes over", func() bool { return b.app.status().State == "ready" && !a.cap.grabbed() })
 
 	// b now controls: its right edge leads to c.
+	b.cap.ch <- inputEvent{kind: evMotion}
 	b.cap.ch <- inputEvent{kind: evPos, x: 999, y: 0}
 	waitFor(t, "b controls c", func() bool { return c.app.status().By == b.id() && b.cap.grabbed() })
 	for _, k := range []uint16{keyLeftCtrl, keyLeftAlt, keyEsc} {
@@ -258,6 +265,8 @@ func TestGroup(t *testing.T) {
 	waitFor(t, "b back", func() bool { return b.online(a) && b.online(c) && a.online(b) })
 
 	// Forgetting c on a removes it from the whole group.
+	introGrace = 0
+	defer func() { introGrace = time.Minute }()
 	a.app.forget(c.id())
 	waitFor(t, "c gone everywhere", func() bool {
 		a.app.mu.Lock()

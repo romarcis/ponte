@@ -1,8 +1,10 @@
 # Ponte
 
-One mouse and one keyboard for two computers. Move the pointer past the edge of
-the screen and keep working on the other computer, like Synergy or Barrier, but
-in a single file of about 6 MB with no installer.
+One mouse and one keyboard for all your computers. Move the pointer past the
+edge of the screen and keep working on the computer next to it, like Synergy,
+Barrier or Mouse Without Borders, but in a single file of about 6 MB with no
+installer. Every computer is equal: the one whose mouse or keyboard you touch
+is the one in control.
 
 The app's interface is in Italian; the labels below are quoted as they appear,
 with a translation.
@@ -18,33 +20,40 @@ Settings has a **Cerca aggiornamenti** (check for updates) button.
 
 ## How to use it
 
-1. Start `Ponte` on both computers (on the same network). A window opens.
-2. On the computer with the mouse and keyboard, choose
-   **Questo computer ha mouse e tastiera** (this computer has the mouse and
-   keyboard). A 6-digit code appears.
-3. On the other one, choose **Questo computer verrà controllato** (this
-   computer will be controlled), click the computer found on the network and
-   type the code.
-4. Done. Move the pointer past the edge of the screen (the right one by
-   default, you can change it in the window) to switch to the other computer.
-   To come back, move the pointer out the opposite side, or press
-   **Scroll Lock** or **Ctrl + Alt + Esc** (handy if the keyboard has no
-   Scroll Lock).
+1. Start `Ponte` on each computer (on the same network). A window opens with
+   the screen map and a 6-digit code.
+2. On one computer, pick another from **Computer nella rete** (computers on
+   the network) and type the code that computer shows. Pair a third computer
+   with any computer of the group: the others learn about it on their own.
+3. Drag the screens on the map to match your desk (or tap a screen, then tap
+   its new place). The map is the same on every computer.
+4. Move the pointer past a screen edge to go to the computer on that side of
+   the map, and on from there to the next one. **Scroll Lock** jumps to the
+   next computer; **Ctrl + Alt + Esc** brings mouse and keyboard back to the
+   computer they belong to.
 
-Text copied on one computer can be pasted on the other; on Windows, files
+Whoever touches a computer's mouse or keyboard controls from there: if
+someone uses the mouse of a computer being controlled, that computer takes it
+back at once, and from there it can control the others.
+
+Text copied on one computer can be pasted on the others; on Windows, files
 copied in Explorer too (up to 200 MB at a time). It can be turned off in
 Settings.
 
-Pairing happens once: after that the two computers reconnect on their own.
-The settings (gear button at the top right) include **Avvia con il computer**
-(start with the computer).
+Pairing happens once: after that the computers reconnect on their own. The
+trash icon next to a computer removes it from the whole group. The settings
+(gear button at the top right) include **Avvia con il computer** (start with
+the computer).
 
 Closing the window keeps Ponte running in the notification area (the mouse
 icon next to the clock): a click opens it again, a right-click offers
-**Esci da Ponte** (quit). If you quit Ponte on the controlled computer while
-using it, the mouse and keyboard go straight back to the other computer; if
-the other computer stops answering, they come back on their own within
-3 seconds.
+**Esci da Ponte** (quit). If you quit Ponte on a computer while it is being
+controlled, the mouse and keyboard go straight back; if a computer stops
+answering, they come back on their own within 3 seconds.
+
+All the computers need Ponte 1.4 or later: older versions (with the two roles
+"share" and "receive") cannot talk to it. Pairings made with an older version
+are kept.
 
 ## First start
 
@@ -54,7 +63,7 @@ access: choose **Private networks**.
 
 The first time you open Ponte it asks once for administrator rights. With
 them it installs the Ponte service, so that the mouse and keyboard of the
-other computer also work on Windows confirmation prompts (UAC), on the lock
+other computers also work on Windows confirmation prompts (UAC), on the lock
 screen and in programs run as administrator. After that it starts as
 administrator without asking again. If you say no, Ponte still works without
 those, and the window shows a warning with a **Concedi i permessi** (grant
@@ -107,11 +116,11 @@ the executables are among the run's artifacts.
 
 | File | What it holds |
 |---|---|
-| `share.go` | computer that shares: screen edge, switching, Scroll Lock |
-| `recv.go` | controlled computer: reconnecting, replaying the input |
+| `node.go` | connections to the group, switching at screen edges, Scroll Lock, replaying the input of another computer |
+| `layout.go` | the shared screen map |
 | `crypto.go`, `proto.go` | encrypted connection and messages |
 | `clip.go`, `clip_windows.go`, `clip_unix.go`, `files.go` | copied text and files shared between the computers |
-| `discovery.go` | network announcements (UDP 24802) to find the other computer |
+| `discovery.go` | network announcements (UDP 24802) to find the other computers |
 | `input_windows.go` | low-level hooks and `SendInput` |
 | `input_linux.go` | `/dev/input` (evdev) and `/dev/uinput`, pointer position from X11 |
 | `admin_windows.go`, `service_windows.go` | start as administrator and the Ponte service for the protected desktop |
@@ -129,5 +138,5 @@ example Italian) on both computers.
 - macOS is not supported yet.
 - Copied files are shared only between Windows computers; images are not
   shared. On Linux, text needs `xclip` (X11) or `wl-clipboard` (Wayland).
-- On Windows, while you control the other computer, the local pointer stays
+- On Windows, while you control another computer, the local pointer stays
   still in the middle of the screen.

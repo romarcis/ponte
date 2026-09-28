@@ -23,6 +23,10 @@ import (
 // tests, to run several on one machine).
 var listenAddr = ":" + strconv.Itoa(dataPort)
 
+// introGrace is how long a computer just introduced by another may refuse
+// this one without being forgotten: it may not have received its key yet.
+var introGrace = time.Minute
+
 // link is the connection to one computer of the group.
 type link struct {
 	sc       *secureConn
@@ -85,11 +89,12 @@ type node struct {
 	view   nodeView
 
 	// Owned by loop.
-	links    map[string]*link
-	dialing  map[string]bool
-	lastDial map[string]time.Time
-	since    map[string]time.Time // when each computer was last linked
-	errs     map[string]string
+	links      map[string]*link
+	dialing    map[string]bool
+	lastDial   map[string]time.Time
+	since      map[string]time.Time // when each computer was last linked
+	introduced map[string]time.Time
+	errs       map[string]string
 
 	// Controlling another computer.
 	target   *link
@@ -106,30 +111,32 @@ type node struct {
 	refused   bool
 	moves     []time.Time // own mouse motions while controlled
 	lastCheck time.Time
+	moved     time.Time // last motion of this computer's own mouse
 }
 
 func startNode(a *App) (*node, error) {
 	n := &node{
-		app:      a,
-		id:       hex.EncodeToString(a.deviceID()),
-		clip:     makeClipboard(),
-		events:   make(chan inputEvent, 4096),
-		msgs:     make(chan linkMsg, 256),
-		newL:     make(chan *link),
-		gone:     make(chan *link),
-		calls:    make(chan func(), 16),
-		stop:     make(chan struct{}),
-		done:     make(chan struct{}),
-		links:    map[string]*link{},
-		dialing:  map[string]bool{},
-		lastDial: map[string]time.Time{},
-		since:    map[string]time.Time{},
-		errs:     map[string]string{},
-		local:    map[uint16]time.Time{},
-		held:     map[uint16]bool{},
-		heldBtn:  map[uint8]bool{},
-		injKeys:  map[uint16]bool{},
-		injBtns:  map[uint8]bool{},
+		app:        a,
+		id:         hex.EncodeToString(a.deviceID()),
+		clip:       makeClipboard(),
+		events:     make(chan inputEvent, 4096),
+		msgs:       make(chan linkMsg, 256),
+		newL:       make(chan *link),
+		gone:       make(chan *link),
+		calls:      make(chan func(), 16),
+		stop:       make(chan struct{}),
+		done:       make(chan struct{}),
+		links:      map[string]*link{},
+		dialing:    map[string]bool{},
+		lastDial:   map[string]time.Time{},
+		since:      map[string]time.Time{},
+		introduced: map[string]time.Time{},
+		errs:       map[string]string{},
+		local:      map[uint16]time.Time{},
+		held:       map[uint16]bool{},
+		heldBtn:    map[uint8]bool{},
+		injKeys:    map[uint16]bool{},
+		injBtns:    map[uint8]bool{},
 	}
 	n.all.Store(&[]*link{})
 
@@ -330,6 +337,8 @@ func (n *node) dial(id, addr, code string) {
 			delete(n.errs, id)
 		case errors.Is(err, errAuth) && code != "":
 			n.app.setError("Codice non corretto", "Controlla il codice mostrato sull'altro computer e riprova.")
+		case errors.Is(err, errAuth) && time.Since(n.introduced[id]) < introGrace:
+			// Just introduced: the other computer may not have its key yet.
 		case errors.Is(err, errAuth):
 			// The other computer forgot this one: so does this one.
 			logf("%s non riconosce più questo computer: abbinamento rimosso", n.app.peerName(id))
@@ -464,10 +473,10 @@ func (n *node) added(l *link) {
 	delete(n.errs, l.id)
 	logf("collegato %s (%s, %dx%d, Ponte %s)", l.name, l.addr, l.w, l.h, l.version)
 	l.send(encLayout(n.app.layoutCopy()))
+	n.publish()
 	if l.fresh {
 		n.introduce(l)
 	}
-	n.publish()
 }
 
 // introduce pairs a computer that just joined with the others of the group
@@ -625,6 +634,7 @@ func (n *node) handleMsg(l *link, msg []byte) {
 		if r.err == nil && len(key) == 32 && id != n.id && n.app.peerKey(id) == nil {
 			n.app.pairPeer(id, name, os, addr, key)
 			n.since[id] = time.Time{}
+			n.introduced[id] = time.Now()
 			logf("%s presenta %s: abbinati", l.name, name)
 			n.maintain()
 		}
@@ -824,8 +834,13 @@ func (n *node) handle(ev inputEvent) {
 		n.takeBack()
 	}
 	switch ev.kind {
+	case evMotion:
+		n.moved = time.Now()
 	case evPos:
-		if n.target == nil && n.settled() && !n.heldLocally() {
+		// Only when this computer's own mouse took the pointer there: on
+		// Linux the position is read all the time, and after another
+		// computer let go the pointer may still sit on the edge it left by.
+		if n.target == nil && n.settled() && !n.heldLocally() && time.Since(n.moved) < 250*time.Millisecond {
 			n.atEdge(int(ev.x), int(ev.y))
 		}
 	case evRel:
