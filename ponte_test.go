@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
+	"image"
+	"image/png"
 	"sync"
 	"testing"
 	"time"
@@ -248,5 +251,17 @@ func TestRippleFrame(t *testing.T) {
 	rippleFrame(buf, size, 1, 4, defaultRippleColor)
 	if lit() != 0 {
 		t.Fatal("circles should be gone at the end")
+	}
+}
+
+func TestTintPNG(t *testing.T) {
+	img := image.NewNRGBA(image.Rect(0, 0, 2, 1))
+	copy(img.Pix, []uint8{0x5b, 0x5b, 0xf7, 255, 255, 255, 255, 128})
+	var b bytes.Buffer
+	png.Encode(&b, img)
+	out, _ := png.Decode(bytes.NewReader(tintPNG(b.Bytes(), 0xc2410c)))
+	got := out.(*image.NRGBA).Pix
+	if want := []uint8{0xc2, 0x41, 0x0c, 255, 255, 255, 255, 128}; !bytes.Equal(got, want) {
+		t.Fatalf("tint: got %v, want %v", got, want)
 	}
 }

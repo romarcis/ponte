@@ -31,6 +31,7 @@ var (
 	pTranslateMessage   = user32.NewProc("TranslateMessage")
 	pDispatchMessage    = user32.NewProc("DispatchMessageW")
 	pPostMessage        = user32.NewProc("PostMessageW")
+	pSendMessage        = user32.NewProc("SendMessageW")
 	pPostQuitMessage    = user32.NewProc("PostQuitMessage")
 	pLoadCursor         = user32.NewProc("LoadCursorW")
 	pCreateIconFromRes  = user32.NewProc("CreateIconFromResourceEx")
@@ -62,6 +63,8 @@ const (
 	wmTrayIcon      = wmApp + 11
 	wmShowMain      = wmApp + 12
 	wmExitApp       = wmApp + 13
+	wmColor         = wmApp + 14
+	wmSetIcon       = 0x0080
 	wmLButtonUpMsg  = 0x0202
 	wmRButtonUpMsg  = 0x0205
 	wmContextMenu   = 0x007B
@@ -165,6 +168,12 @@ func loadIcon(size int) uintptr {
 		}
 	}
 	b, _ := iconFS.ReadFile(fmt.Sprintf("assets/icon-%d.png", best))
+	gui.app.mu.Lock()
+	custom := gui.app.cfg.Color != ""
+	gui.app.mu.Unlock()
+	if custom {
+		b = tintPNG(b, gui.app.rippleRGB())
+	}
 	h, _, _ := pCreateIconFromRes.Call(uintptr(unsafe.Pointer(&b[0])), uintptr(len(b)), 1, 0x00030000, uintptr(size), uintptr(size), 0)
 	return h
 }
@@ -311,6 +320,9 @@ func trayProc(hwnd, msg, wp, lp uintptr) uintptr {
 	case msg == wmExitApp:
 		exitApp()
 		return 0
+	case msg == wmColor:
+		reloadIcons()
+		return 0
 	case msg == wmTimer:
 		updateTrayTip()
 		return 0
@@ -342,6 +354,7 @@ func showMain() {
 	hwnd, _, _ := pCreateWindowEx.Call(0, uintptr(unsafe.Pointer(wstr("PonteMain"))), uintptr(unsafe.Pointer(wstr("Ponte"))),
 		wsOverlappedWindow, uintptr(x+(sw-w)/2), uintptr(y+(sh-h)/2), uintptr(w), uintptr(h), 0, 0, gui.inst, 0)
 	gui.mainHwnd = hwnd
+	setWindowIcons()
 	pShowWindow.Call(hwnd, swShow)
 	pSetForegroundWin.Call(hwnd)
 
@@ -432,3 +445,25 @@ func showExisting(url string, token string) {
 }
 
 func showWindow() { pPostMessage.Call(gui.trayHwnd, wmShowMain, 0, 0) }
+
+// colorChanged repaints the icons in the color chosen in the window.
+func colorChanged() { pPostMessage.Call(gui.trayHwnd, wmColor, 0, 0) }
+
+// ponytail: old icons are not destroyed (a few KB per color change).
+func reloadIcons() {
+	gui.iconBig = loadIcon(metric(11))
+	gui.iconSmall = loadIcon(metric(49))
+	if gui.nid.hwnd != 0 {
+		gui.nid.flags = nifIcon
+		gui.nid.icon = gui.iconSmall
+		pShellNotifyIcon.Call(nimModify, uintptr(unsafe.Pointer(&gui.nid)))
+	}
+	setWindowIcons()
+}
+
+func setWindowIcons() {
+	if gui.mainHwnd != 0 {
+		pSendMessage.Call(gui.mainHwnd, wmSetIcon, 1, gui.iconBig)
+		pSendMessage.Call(gui.mainHwnd, wmSetIcon, 0, gui.iconSmall)
+	}
+}

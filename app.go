@@ -227,6 +227,7 @@ func (a *App) setColor(c string) {
 	a.cfg.Color = c
 	a.cfg.save()
 	a.mu.Unlock()
+	colorChanged()
 }
 
 func validColor(c string) bool {

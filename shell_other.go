@@ -25,6 +25,8 @@ func showExisting(url, token string) { openWindow(url) }
 
 func showWindow() { openWindow(shellURL) }
 
+func colorChanged() {}
+
 func quitApp(app *App) {
 	app.shutdown()
 	os.Exit(0)
