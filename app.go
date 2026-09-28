@@ -58,6 +58,7 @@ type status struct {
 	ClipboardOK bool          `json:"clipboardOK"`
 	Ripple      bool          `json:"ripple"`
 	Color       string        `json:"color"`
+	Update      string        `json:"update"` // newer version on GitHub
 }
 
 // version is set at build time (build.sh, from the release tag).
@@ -78,7 +79,7 @@ func (a *App) status() status {
 		Peer: a.peerName, PeerOS: a.peerOS, Edge: a.cfg.Edge, EdgeSwitch: a.edgeSwitch,
 		Error: a.errMsg, ErrorHelp: a.errHelp, Target: a.cfg.LastServer,
 		Found: []foundServer{}, Clients: []peerView{}, Servers: []peerView{},
-		Clipboard: !a.cfg.NoClipboard, ClipboardOK: a.clipOK, Ripple: !a.cfg.NoRipple, Color: a.cfg.Color,
+		Clipboard: !a.cfg.NoClipboard, ClipboardOK: a.clipOK, Ripple: !a.cfg.NoRipple, Color: a.cfg.Color, Update: updateAvailable(),
 	}
 	for id, c := range a.cfg.Clients {
 		s.Clients = append(s.Clients, peerView{id, c.Name, c.OS})

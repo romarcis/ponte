@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"time"
 )
 
 const uiPort = 24801
@@ -34,26 +35,37 @@ func setupLog() {
 }
 
 func main() {
-	background := false
+	background, afterUpdate := false, false
 	for _, a := range os.Args[1:] {
 		switch a {
 		case "--background", "-b":
 			background = true
+		case "--after-update":
+			afterUpdate = true
 		case "--version", "-v":
 			fmt.Println("Ponte", version)
 			return
 		}
 	}
-	setupLog()
 	app := newApp()
 	url := fmt.Sprintf("http://127.0.0.1:%d/?t=%s", uiPort, app.cfg.UIToken)
 
 	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", uiPort))
+	// After an update the old Ponte is still closing: wait for it.
+	for i := 0; err != nil && afterUpdate && i < 30; i++ {
+		time.Sleep(500 * time.Millisecond)
+		ln, err = net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", uiPort))
+	}
 	if err != nil {
 		// Ponte is already running: just show its window.
 		showExisting(url, app.cfg.UIToken)
 		return
 	}
+	// Only now: a second Ponte started by mistake must not wipe the log of
+	// the one already running.
+	setupLog()
+	cleanupUpdate()
+	go watchUpdates()
 	if app.cfg.Role != "" {
 		app.setRole(app.cfg.Role)
 	}

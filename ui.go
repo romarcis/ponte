@@ -96,6 +96,17 @@ func serveUI(ln net.Listener, app *App) {
 		return map[string]string{"ok": "1"}
 	})
 	api("POST /api/show", func(map[string]string) any { showWindow(); return map[string]string{"ok": "1"} })
+	api("POST /api/update", func(map[string]string) any {
+		if err := applyUpdate(); err != nil {
+			logf("aggiornamento non riuscito: %v", err)
+			return map[string]string{"error": err.Error()}
+		}
+		go func() {
+			time.Sleep(200 * time.Millisecond)
+			quitApp(app)
+		}()
+		return map[string]string{"ok": "1"}
+	})
 	api("POST /api/quit", func(map[string]string) any {
 		go func() {
 			time.Sleep(200 * time.Millisecond)

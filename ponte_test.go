@@ -285,3 +285,14 @@ func TestTintPNG(t *testing.T) {
 		t.Fatalf("tint: got %v, want %v", got, want)
 	}
 }
+
+func TestNewer(t *testing.T) {
+	for _, c := range []struct {
+		a, b string
+		want bool
+	}{{"1.2.4", "1.2.3", true}, {"1.2.10", "1.2.9", true}, {"1.2.3", "1.2.3", false}, {"1.2", "1.2.1", false}, {"2.0.0", "1.9.9", true}} {
+		if newer(c.a, c.b) != c.want {
+			t.Errorf("newer(%q, %q) != %v", c.a, c.b, c.want)
+		}
+	}
+}

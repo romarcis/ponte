@@ -230,6 +230,7 @@ kbd{display:inline-block;font-family:inherit;font-weight:600;font-size:12.5px;li
   </div>
 
   <div id="alert"></div>
+  <div id="update"></div>
 
   <!-- choose a role -->
   <section id="v-welcome" hidden>
@@ -357,6 +358,8 @@ function offline() {
 
 function render() {
   $("#myname").textContent = S.name;
+  set("update", S.update ? `<div class="alert">${icon.info}<div style="flex:1"><b>È disponibile Ponte ${esc(S.update)}</b><div class="help">Questo computer ha la versione ${esc(S.version)}. Ponte si riavvia da solo in pochi secondi; aggiorna anche l'altro computer.</div>
+    <div class="acts"><button class="btn small" id="doupdate">Aggiorna e riavvia</button></div></div></div>` : "");
   $("#autosw").classList.toggle("on", S.autostart);
   $("#clipsw").classList.toggle("on", S.clipboard);
   $("#ripplesw").classList.toggle("on", S.ripple);
@@ -502,6 +505,7 @@ document.addEventListener("click", async e => {
   else if (t.id === "getlog") { location.href = "/ponte-log.txt?t=" + TOKEN; toast("Log salvato in Download: allegalo alla segnalazione su github.com/romarcis/ponte/issues"); }
   else if (t.id === "changerole") { S = await api("/api/role", {role: ""}); render(); }
   else if (t.id === "quit") { await api("/api/quit", {}); document.body.innerHTML = '<div class="app"><div class="card center" style="margin-top:80px"><h2>Ponte è stato chiuso</h2><p class="muted">Il mouse e la tastiera tornano a funzionare solo su ciascun computer.</p></div></div>'; clearInterval(timer); }
+  else if (t.id === "doupdate") { t.disabled = true; t.textContent = "Scarico…"; const r = await api("/api/update", {}); if (r.error) { toast("Aggiornamento non riuscito: " + r.error); t.disabled = false; t.textContent = "Aggiorna e riavvia"; } else toast("Aggiornato: Ponte si sta riavviando…"); }
   else if (t.id === "retry") { S = await api("/api/role", {role: S.role}); render(); }
   else if (t.id === "fix") { t.disabled = true; t.textContent = "Attendi…"; const r = await api("/api/fix", {}); if (r.error) toast("Operazione non riuscita"); else toast("Fatto!"); refresh(); }
   else if (t.id === "manual") { $("#addr").value = ""; openVeil("addrveil"); setTimeout(() => $("#addr").focus(), 50); }
