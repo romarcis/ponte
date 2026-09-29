@@ -60,6 +60,7 @@ type status struct {
 	Ripple      bool            `json:"ripple"`
 	Color       string          `json:"color"`
 	Theme       string          `json:"theme"`
+	Notify      bool            `json:"notify"`
 	Update      string          `json:"update"` // newer version on GitHub
 }
 
@@ -79,7 +80,7 @@ func (a *App) status() status {
 		ID: a.cfg.id(), Name: a.cfg.Name, OS: runtime.GOOS, Version: version, State: "starting",
 		Code: a.code, Error: a.errMsg, ErrorHelp: a.errHelp,
 		Found: []foundPeer{}, Peers: []peerView{}, Layout: a.cfg.Layout.clone().Pos,
-		Clipboard: !a.cfg.NoClipboard, Ripple: !a.cfg.NoRipple, Color: a.cfg.Color, Theme: a.cfg.Theme, Update: updateAvailable(),
+		Clipboard: !a.cfg.NoClipboard, Ripple: !a.cfg.NoRipple, Color: a.cfg.Color, Theme: a.cfg.Theme, Notify: !a.cfg.NoNotify, Update: updateAvailable(),
 	}
 	for id, p := range a.cfg.Peers {
 		s.Peers = append(s.Peers, peerView{ID: id, Name: p.Name, OS: p.OS})
@@ -217,6 +218,19 @@ func (a *App) rippleOn() bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return !a.cfg.NoRipple
+}
+
+func (a *App) notifyOn() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return !a.cfg.NoNotify
+}
+
+func (a *App) setNotify(on bool) {
+	a.mu.Lock()
+	a.cfg.NoNotify = !on
+	a.cfg.save()
+	a.mu.Unlock()
 }
 
 func (a *App) setRipple(on bool) {

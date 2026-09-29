@@ -291,6 +291,7 @@ kbd{display:inline-block;font-family:inherit;font-weight:600;font-size:12.5px;li
       <div class="setrow colors"><span class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg></span><span class="st"><b>Tema</b><small>Automatico segue il tema di Windows.</small></span>
         <div class="themes" id="themes"><button data-theme="">Automatico</button><button data-theme="light">Chiaro</button><button data-theme="dark">Scuro</button></div>
       </div>
+      <label class="setrow" id="notify"><span class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 8 3 8H3s3-1 3-8M10 20a2 2 0 0 0 4 0"/></svg></span><span class="st"><b>Avviso quando un computer si collega</b><small>Un avviso vicino all'orologio, sia sul computer che compare in rete sia sugli altri.</small></span><span class="switch" id="notifysw"></span></label>
       <label class="setrow" id="ripple"><span class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="2"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="10"/></svg></span><span class="st"><b>Cerchi intorno al puntatore</b><small>A ogni passaggio da un computer all'altro, per ritrovare subito la freccia.</small></span><span class="switch" id="ripplesw"></span></label>
     </div>
 
@@ -419,6 +420,8 @@ function render() {
   $("#ver").textContent = S.version === "dev" ? "dev" : "v" + S.version;
   $("#clipsw").classList.toggle("on", S.clipboard);
   $("#ripplesw").classList.toggle("on", S.ripple);
+  $("#notifysw").classList.toggle("on", S.notify);
+  $("#notify").hidden = S.os !== "windows";
   const st = document.documentElement.style, preset = $(`#colors [data-color="${S.color}"]`);
   for (const [k, v] of [["--accent", S.color], ["--accent2", S.color], ["--accent-soft", S.color && `color-mix(in srgb,${S.color} 16%,var(--card))`], ["--logo", S.color], ["--logo2", S.color]]) v ? st.setProperty(k, v) : st.removeProperty(k);
   S.theme ? document.documentElement.dataset.theme = S.theme : delete document.documentElement.dataset.theme;
@@ -621,6 +624,7 @@ document.addEventListener("click", async e => {
   }
   else if (t.id === "autostart") { e.preventDefault(); S = await api("/api/autostart", {on: S.autostart ? "0" : "1"}); render(); toast(S.autostart ? "Ponte partirà insieme al computer" : "Avvio automatico disattivato"); }
   else if (t.id === "clipboard") { e.preventDefault(); S = await api("/api/clipboard", {on: S.clipboard ? "0" : "1"}); render(); toast(S.clipboard ? "Testo e file copiati passano da un computer all'altro" : "Condivisione di testo e file disattivata"); }
+  else if (t.id === "notify") { e.preventDefault(); S = await api("/api/notify", {on: S.notify ? "0" : "1"}); render(); }
   else if (t.id === "ripple") { e.preventDefault(); S = await api("/api/ripple", {on: S.ripple ? "0" : "1"}); render(); toast(S.ripple ? "Il puntatore si mostra con dei cerchi a ogni passaggio" : "Cerchi intorno al puntatore disattivati"); }
   else if (t.dataset.theme !== undefined) { S = await api("/api/theme", {theme: t.dataset.theme}); render(); }
   else if (t.id === "pausebtn") { settingsOpen = false; t.disabled = true; S = await api("/api/pause", {on: "1"}); t.disabled = false; render(); }

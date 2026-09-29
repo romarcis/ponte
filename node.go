@@ -509,9 +509,13 @@ func (n *node) added(l *link) {
 		n.dropLink(old, "collegamento sostituito")
 		old.close()
 	}
+	replaced := n.links[l.id] != nil
 	n.links[l.id] = l
 	delete(n.errs, l.id)
 	logf("collegato %s (%s, %dx%d, Ponte %s)", l.name, l.addr, l.w, l.h, l.version)
+	if !replaced && n.app.notifyOn() {
+		notify("Collegato a "+l.name, "Ora puoi usare mouse e tastiera anche su "+l.name+".")
+	}
 	l.send(encLayout(n.app.layoutCopy()))
 	l.send(n.app.members())
 	n.publish()

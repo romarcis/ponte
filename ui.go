@@ -96,6 +96,7 @@ func serveUI(ln net.Listener, app *App) {
 	api("POST /api/clipboard", func(b map[string]string) any { app.setClipboard(b["on"] == "1"); return state() })
 	api("POST /api/theme", func(b map[string]string) any { app.setTheme(b["theme"]); return state() })
 	api("POST /api/color", func(b map[string]string) any { app.setColor(b["color"]); return state() })
+	api("POST /api/notify", func(b map[string]string) any { app.setNotify(b["on"] == "1"); return state() })
 	api("POST /api/ripple", func(b map[string]string) any { app.setRipple(b["on"] == "1"); return state() })
 	api("POST /api/forget", func(b map[string]string) any { app.forget(b["id"]); return state() })
 	api("POST /api/autostart", func(b map[string]string) any {
