@@ -134,6 +134,15 @@ func (c *clipSync) takeOffer() (from string, id uint32, ok bool) {
 	return
 }
 
+// peerGone forgets the files a computer offered, when it disconnects: they
+// cannot be fetched any more, and while they stayed on offer Ctrl+V was held
+// back for nothing.
+func (c *clipSync) peerGone(from string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.dropOffer(from)
+}
+
 // dropOffer forgets the files offered by another computer (by from, when
 // not empty); c.mu held.
 func (c *clipSync) dropOffer(from string) {

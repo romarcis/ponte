@@ -601,6 +601,7 @@ func (n *node) dropLink(l *link, why string) {
 		n.release()
 		logf("<- %s non controlla più questo computer (%s)", l.name, why)
 	}
+	n.cs.peerGone(l.id)
 	if n.paste != nil && n.paste.from == l.id {
 		n.endPaste() // the files will not come
 	}
