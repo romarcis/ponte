@@ -1295,6 +1295,7 @@ func (n *node) requestPaste(by *link) {
 	from, id, ok := n.cs.takeOffer()
 	l := n.links[from]
 	if !ok || l == nil {
+		logf("incolla: nessun file da attendere (offerta %v, collegamento %v), incollo quello che c'è", ok, l != nil)
 		n.pasteKeys(by) // nothing to wait for: paste what is here
 		return
 	}

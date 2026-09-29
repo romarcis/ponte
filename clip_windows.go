@@ -43,12 +43,26 @@ func newClipboard() clipboard { return &winClipboard{} }
 
 func (c *winClipboard) Available() bool { return true }
 
+var pGetOpenClipboardWindow = user32.NewProc("GetOpenClipboardWindow")
+
+var lastBusyLog time.Time
+
 func openClipboard() bool {
 	for range 10 {
 		if r, _, _ := pOpenClipboard.Call(0); r != 0 {
 			return true
 		}
 		time.Sleep(20 * time.Millisecond) // another program is using it
+	}
+	if time.Since(lastBusyLog) > 5*time.Second {
+		lastBusyLog = time.Now()
+		who := "un programma"
+		if h, _, _ := pGetOpenClipboardWindow.Call(); h != 0 {
+			var class [128]uint16
+			pGetClassName.Call(h, uintptr(unsafe.Pointer(&class[0])), 128)
+			who = syscall.UTF16ToString(class[:])
+		}
+		logf("appunti occupati da %s: li leggo alla prossima occasione", who)
 	}
 	return false
 }

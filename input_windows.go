@@ -396,9 +396,13 @@ var keyHookCB = syscall.NewCallback(func(nCode, wParam, lParam uintptr) uintptr 
 			c.send(inputEvent{kind: evKey, code: code, val: state})
 			if state != 0 && c.holdPaste(k.vk) {
 				if state == 1 {
+					logf("   Ctrl+V trattenuto: aspetto i file copiati su un altro computer")
 					c.send(inputEvent{kind: evPaste})
 				}
 				return 1
+			}
+			if state == 1 && k.vk == 'V' && (c.down[vkLControl] || c.down[vkRControl]) && !c.grab.Load() {
+				logf("   Ctrl+V lasciato a Windows")
 			}
 		} else if (wParam == wmKeyDown || wParam == wmSysKeyDown) && !c.unknown[k.vk] {
 			c.unknown[k.vk] = true // once per key, not at every repeat

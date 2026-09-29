@@ -80,6 +80,7 @@ func startClipSync(app *App, cb clipboard, send func([]byte), stop <-chan struct
 			c.last = text
 			c.mu.Unlock()
 			if changed {
+				logf("testo copiato qui (%d caratteri)", len(text))
 				send(wbuf{msgClipboard}.u32(uint32(len(text))).raw(text))
 			}
 		}
