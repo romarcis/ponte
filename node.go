@@ -96,7 +96,8 @@ type node struct {
 	lastDial   map[string]time.Time
 	since      map[string]time.Time // when each computer was last linked
 	introduced map[string]time.Time
-	refusals   map[string]int // refusals in a row, per computer
+	refusals   map[string]int    // refusals in a row, per computer
+	warned     map[string]string // version warning shown, per computer
 	errs       map[string]string
 
 	// Controlling another computer.
@@ -148,6 +149,7 @@ func startNode(a *App) (*node, error) {
 		since:      map[string]time.Time{},
 		introduced: map[string]time.Time{},
 		refusals:   map[string]int{},
+		warned:     map[string]string{},
 		errs:       map[string]string{},
 		local:      map[uint16]time.Time{},
 		held:       map[uint16]bool{},
@@ -512,6 +514,7 @@ func (n *node) added(l *link) {
 	replaced := n.links[l.id] != nil
 	n.links[l.id] = l
 	delete(n.errs, l.id)
+	delete(n.warned, l.id) // warn again if it ever turns incompatible
 	logf("collegato %s (%s, %dx%d, Ponte %s)", l.name, l.addr, l.w, l.h, l.version)
 	if !replaced {
 		notify("Collegato a "+l.name, "Ora puoi usare mouse e tastiera anche su "+l.name+".")
@@ -613,6 +616,7 @@ func (n *node) dropLink(l *link, why string) {
 // with the lower ID dials first; the other tries too after a while, in
 // case a firewall lets connections through in one direction only.
 func (n *node) maintain() {
+	n.checkVersions()
 	for _, id := range n.app.peerIDs() {
 		if n.links[id] != nil || n.dialing[id] || time.Since(n.lastDial[id]) < 3*time.Second {
 			continue
@@ -1351,5 +1355,44 @@ func (n *node) pasteKeys(by *link) {
 	n.inj.Key(keyV, 0)
 	if !ctrl {
 		n.inj.Key(keyLeftCtrl, 0)
+	}
+}
+
+// checkVersions tells, once for each computer of the group, that its Ponte
+// cannot talk to this one: too old, too new, or refused at the handshake.
+func (n *node) checkVersions() {
+	found := map[string]foundPeer{}
+	if n.disc != nil {
+		for _, f := range n.disc.list(n.id) {
+			found[f.ID] = f
+		}
+	}
+	for _, id := range n.app.peerIDs() {
+		if n.links[id] != nil {
+			continue
+		}
+		f, seen := found[id]
+		name := n.app.peerName(id)
+		var kind, title, text string
+		switch {
+		case seen && f.Newer:
+			kind = "new"
+			title = "Ponte su questo computer è da aggiornare"
+			text = name + " usa Ponte " + f.Ver + ", questo computer la " + version + ". Aggiorna Ponte qui."
+		case seen && f.Old, n.errs[id] == "old":
+			kind = "old"
+			title = "Ponte su " + name + " è da aggiornare"
+			text = name + " usa una versione di Ponte troppo vecchia per collegarsi a questo computer (la " + version + ")."
+			if seen && f.Ver != "" {
+				text = name + " usa Ponte " + f.Ver + ", questo computer la " + version + ". Aggiorna Ponte su " + name + "."
+			}
+		default:
+			continue
+		}
+		if key := kind + f.Ver; n.warned[id] != key {
+			n.warned[id] = key
+			logf("versione non compatibile: %s", text)
+			notify(title, text)
+		}
 	}
 }

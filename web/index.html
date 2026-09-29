@@ -473,7 +473,7 @@ function renderMain() {
 
   $("#peersCard").hidden = !S.peers.length;
   set("peers", S.peers.map(p => `<div class="item"><div class="ic">${osIcon(p.os)}</div><div class="tx"><b>${esc(p.name)}</b><small>${osLabel(p.os)}</small></div>
-    ${p.online ? '<span class="badge">Collegato</span>' : p.old ? '<span class="badge" style="background:var(--warn-soft);color:var(--warn)">Da aggiornare</span>' : '<span class="badge" style="background:var(--card);color:var(--muted)">Non raggiungibile</span>'}
+    ${p.online ? '<span class="badge">Collegato</span>' : p.old ? '<span class="badge" style="background:var(--warn-soft);color:var(--warn)">Da aggiornare</span>' : p.newer ? '<span class="badge" style="background:var(--warn-soft);color:var(--warn)">Aggiorna questo PC</span>' : '<span class="badge" style="background:var(--card);color:var(--muted)">Non raggiungibile</span>'}
     <button class="iconbtn" title="Togli dal gruppo" data-forget="${esc(p.id)}">${icon.trash}</button></div>`).join(""));
 }
 
@@ -494,7 +494,7 @@ function renderMap() {
     const id = ids.find(i => L[i].x === x && L[i].y === y);
     if (!id) { h += `<div class="cellslot" style="${area}" data-x="${x}" data-y="${y}">Metti qui</div>`; continue; }
     const me = id === S.id, p = peers[id] || {};
-    const sub = me ? (S.state === "controlled" ? "lo usa " + esc(peerName(S.by)) : "questo computer") : p.online ? "" : p.old ? "da aggiornare" : "non raggiungibile";
+    const sub = me ? (S.state === "controlled" ? "lo usa " + esc(peerName(S.by)) : "questo computer") : p.online ? "" : p.old ? "da aggiornare" : p.newer ? "aggiorna questo PC" : "non raggiungibile";
     const cls = ["tile", me ? "me" : "", !me && !p.online ? "off" : "", id === here ? "live" : "", id === pick ? "sel" : ""].join(" ");
     h += `<div class="${cls}" style="${area}" draggable="true" data-tile="${esc(id)}" data-x="${x}" data-y="${y}" title="Trascinalo dove si trova sulla scrivania">
       <div class="scr"><span>${esc(me ? S.name : p.name)}${sub ? `<small>${sub}</small>` : ""}</span>${id === here ? icon.cursor : ""}</div><div class="stand"></div></div>`;

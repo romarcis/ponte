@@ -36,7 +36,9 @@ type foundPeer struct {
 	OS     string `json:"os"`
 	Addr   string `json:"addr"`
 	Paired bool   `json:"paired"`
-	Old    bool   `json:"old"` // runs a Ponte too old to talk to this one
+	Old    bool   `json:"old"`   // runs a Ponte too old to talk to this one
+	Newer  bool   `json:"newer"` // runs a Ponte too new for this one
+	Ver    string `json:"ver"`
 	seen   time.Time
 }
 
@@ -116,7 +118,7 @@ func (d *discovery) run() {
 		}
 		d.mu.Lock()
 		d.found[b.ID] = &foundPeer{
-			ID: b.ID, Name: b.Name, OS: b.OS, Old: b.Proto < protoVersion,
+			ID: b.ID, Name: b.Name, OS: b.OS, Old: b.Proto < protoVersion, Newer: b.Proto > protoVersion, Ver: b.Version,
 			Addr: net.JoinHostPort(from.IP.String(), itoa(b.Port)),
 			seen: time.Now(),
 		}

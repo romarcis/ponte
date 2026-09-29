@@ -37,7 +37,8 @@ type peerView struct {
 	Name   string `json:"name"`
 	OS     string `json:"os"`
 	Online bool   `json:"online"`
-	Old    bool   `json:"old"` // runs an older Ponte: it needs the update
+	Old    bool   `json:"old"`   // runs an older Ponte: it needs the update
+	Newer  bool   `json:"newer"` // runs a newer Ponte: this computer needs the update
 }
 
 type status struct {
@@ -110,11 +111,11 @@ func (a *App) status() status {
 		s.State = "controlling"
 	}
 	s.EdgeSwitch, s.ClipboardOK = n.edgeOK, n.clip.Available()
-	old := map[string]bool{}
+	old, newer := map[string]bool{}, map[string]bool{}
 	if n.disc != nil {
 		for _, f := range n.disc.list(s.ID) {
 			if _, paired := s.Layout[f.ID]; paired {
-				old[f.ID] = f.Old
+				old[f.ID], newer[f.ID] = f.Old, f.Newer
 				continue
 			}
 			s.Found = append(s.Found, f)
@@ -124,6 +125,7 @@ func (a *App) status() status {
 		p := &s.Peers[i]
 		p.Online = v.online[p.ID]
 		p.Old = !p.Online && (old[p.ID] || v.errs[p.ID] == "old")
+		p.Newer = !p.Online && newer[p.ID]
 	}
 	return s
 }
