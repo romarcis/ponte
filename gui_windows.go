@@ -86,6 +86,7 @@ const (
 	nifTip     = 0x04
 	nifInfo    = 0x10
 	niifUser   = 0x04
+	niifLarge  = 0x20
 
 	menuOpen  = 1
 	menuQuit  = 2
@@ -146,6 +147,7 @@ var gui struct {
 	nid       notifyIconData
 	iconBig   uintptr
 	iconSmall uintptr
+	iconNote  uintptr // large one, for notifications
 	tip       string
 	reAdd     uint32 // "TaskbarCreated": Explorer restarted
 	dpi       int
@@ -205,6 +207,7 @@ func runShell(app *App, url string, show bool, serve func()) {
 	gui.inst, _, _ = pGetModuleHandle.Call(0)
 	gui.iconBig = loadIcon(metric(11))   // SM_CXICON
 	gui.iconSmall = loadIcon(metric(49)) // SM_CXSMICON
+	gui.iconNote = loadIcon(64)
 	cursor, _, _ := pLoadCursor.Call(0, 32512)
 
 	for _, c := range []struct {
@@ -312,7 +315,8 @@ func updateTrayTip() {
 
 func trayBalloon(title, text string) {
 	gui.nid.flags = nifInfo
-	gui.nid.infoFlags = niifUser
+	gui.nid.infoFlags = niifUser | niifLarge
+	gui.nid.balloonIcon = gui.iconNote
 	copyUTF16(gui.nid.infoTitle[:], title)
 	copyUTF16(gui.nid.info[:], text)
 	pShellNotifyIcon.Call(nimModify, uintptr(unsafe.Pointer(&gui.nid)))
@@ -515,6 +519,7 @@ func colorChanged() { pPostMessage.Call(gui.trayHwnd, wmColor, 0, 0) }
 func reloadIcons() {
 	gui.iconBig = loadIcon(metric(11))
 	gui.iconSmall = loadIcon(metric(49))
+	gui.iconNote = loadIcon(64)
 	if gui.nid.hwnd != 0 {
 		gui.nid.flags = nifIcon
 		gui.nid.icon = gui.iconSmall
