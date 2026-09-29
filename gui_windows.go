@@ -532,6 +532,9 @@ func setWindowIcons() {
 
 // notify shows a notification next to the clock.
 func notify(title, text string) {
+	if !gui.app.notifyOn() {
+		return
+	}
 	gui.mu.Lock()
 	gui.notes = append(gui.notes, note{title, text})
 	ready := gui.ready
