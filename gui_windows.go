@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"unsafe"
@@ -148,9 +149,11 @@ var gui struct {
 	tip       string
 	reAdd     uint32 // "TaskbarCreated": Explorer restarted
 	dpi       int
-	noteTitle string // notification waiting to be shown (notify)
-	noteText  string
+	notes     []note // notifications waiting to be shown (notify)
+	ready     bool   // the tray window exists
 }
+
+type note struct{ title, text string }
 
 func wstr(s string) *uint16 { p, _ := syscall.UTF16PtrFromString(s); return p }
 
@@ -220,6 +223,15 @@ func runShell(app *App, url string, show bool, serve func()) {
 	gui.reAdd = registerMsg("TaskbarCreated")
 	addTrayIcon()
 	pSetTimer.Call(gui.trayHwnd, 1, 1000, 0)
+	// What was notified before the window existed (a computer connecting
+	// as Ponte starts) is shown now.
+	gui.mu.Lock()
+	gui.ready = true
+	queued := len(gui.notes) > 0
+	gui.mu.Unlock()
+	if queued {
+		pPostMessage.Call(gui.trayHwnd, wmNotify, 0, 0)
+	}
 	if show {
 		showMain()
 	}
@@ -359,9 +371,19 @@ func trayProc(hwnd, msg, wp, lp uintptr) uintptr {
 		return 0
 	case msg == wmNotify:
 		gui.mu.Lock()
-		title, text := gui.noteTitle, gui.noteText
+		notes := gui.notes
+		gui.notes = nil
 		gui.mu.Unlock()
-		trayBalloon(title, text)
+		if len(notes) > 0 {
+			title, text := notes[0].title, notes[0].text
+			for _, n := range notes[1:] { // one balloon for the ones that came together
+				title += ", " + strings.TrimPrefix(n.title, "Collegato a ")
+			}
+			if len(notes) > 1 {
+				text = "Ora puoi usare mouse e tastiera anche su questi computer."
+			}
+			trayBalloon(title, text)
+		}
 		return 0
 	case msg == wmTimer:
 		updateTrayTip()
@@ -511,7 +533,10 @@ func setWindowIcons() {
 // notify shows a notification next to the clock.
 func notify(title, text string) {
 	gui.mu.Lock()
-	gui.noteTitle, gui.noteText = title, text
+	gui.notes = append(gui.notes, note{title, text})
+	ready := gui.ready
 	gui.mu.Unlock()
-	pPostMessage.Call(gui.trayHwnd, wmNotify, 0, 0)
+	if ready {
+		pPostMessage.Call(gui.trayHwnd, wmNotify, 0, 0)
+	}
 }
