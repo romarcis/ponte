@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/binary"
+	"runtime"
 	"sync"
 	"syscall"
 	"time"
@@ -9,20 +10,24 @@ import (
 	"unsafe"
 )
 
+type clipboardProc interface {
+	Call(...uintptr) (uintptr, uintptr, error)
+}
+
 var (
-	pOpenClipboard       = user32.NewProc("OpenClipboard")
-	pCloseClipboard      = user32.NewProc("CloseClipboard")
-	pEmptyClipboard      = user32.NewProc("EmptyClipboard")
-	pGetClipboardData    = user32.NewProc("GetClipboardData")
-	pSetClipboardData    = user32.NewProc("SetClipboardData")
-	pGetClipboardSeq     = user32.NewProc("GetClipboardSequenceNumber")
-	pIsClipboardFormatAv = user32.NewProc("IsClipboardFormatAvailable")
-	pGlobalAlloc         = kernel32.NewProc("GlobalAlloc")
-	pGlobalFree          = kernel32.NewProc("GlobalFree")
-	pGlobalLock          = kernel32.NewProc("GlobalLock")
-	pGlobalUnlock        = kernel32.NewProc("GlobalUnlock")
-	pGlobalSize          = kernel32.NewProc("GlobalSize")
-	pDragQueryFile       = shell32.NewProc("DragQueryFileW")
+	pOpenClipboard       clipboardProc = user32.NewProc("OpenClipboard")
+	pCloseClipboard      clipboardProc = user32.NewProc("CloseClipboard")
+	pEmptyClipboard      clipboardProc = user32.NewProc("EmptyClipboard")
+	pGetClipboardData    clipboardProc = user32.NewProc("GetClipboardData")
+	pSetClipboardData    clipboardProc = user32.NewProc("SetClipboardData")
+	pGetClipboardSeq     clipboardProc = user32.NewProc("GetClipboardSequenceNumber")
+	pIsClipboardFormatAv clipboardProc = user32.NewProc("IsClipboardFormatAvailable")
+	pGlobalAlloc                       = kernel32.NewProc("GlobalAlloc")
+	pGlobalFree                        = kernel32.NewProc("GlobalFree")
+	pGlobalLock                        = kernel32.NewProc("GlobalLock")
+	pGlobalUnlock                      = kernel32.NewProc("GlobalUnlock")
+	pGlobalSize                        = kernel32.NewProc("GlobalSize")
+	pDragQueryFile                     = shell32.NewProc("DragQueryFileW")
 )
 
 const (
@@ -48,6 +53,10 @@ var pGetOpenClipboardWindow = user32.NewProc("GetOpenClipboardWindow")
 var lastBusyLog time.Time
 
 func openClipboard() bool {
+	// Windows associates the open clipboard with the calling OS thread.
+	// A goroutine can migrate while reading large text or waiting for its
+	// owner to render it, leaving CloseClipboard on the wrong thread.
+	runtime.LockOSThread()
 	for range 10 {
 		if r, _, _ := pOpenClipboard.Call(0); r != 0 {
 			return true
@@ -64,7 +73,46 @@ func openClipboard() bool {
 		}
 		logf("appunti occupati da %s: li leggo alla prossima occasione", who)
 	}
+	runtime.UnlockOSThread()
 	return false
+}
+
+func closeClipboard() {
+	if r, _, err := pCloseClipboard.Call(); r == 0 {
+		logf("chiusura appunti: %v", err)
+	}
+	runtime.UnlockOSThread()
+}
+
+// Copy the native buffer while the clipboard is open, then release it
+// before decoding the text. Very large copies stay local.
+func readClipboardText() ([]uint16, bool) {
+	if !openClipboard() {
+		return nil, false
+	}
+	defer closeClipboard()
+	h, _, _ := pGetClipboardData.Call(cfUnicodeText)
+	if h == 0 {
+		return nil, false
+	}
+	size, _, _ := pGlobalSize.Call(h)
+	// CRLF in UTF-16 can take four bytes per byte of normalized UTF-8.
+	if size > maxClipboard*4+2 {
+		return nil, true
+	}
+	p, _, _ := pGlobalLock.Call(h)
+	if p == 0 {
+		return nil, false
+	}
+	defer pGlobalUnlock.Call(h)
+	u := unsafe.Slice((*uint16)(unsafe.Pointer(p)), size/2)
+	for i, v := range u {
+		if v == 0 {
+			u = u[:i]
+			break
+		}
+	}
+	return append([]uint16{}, u...), true
 }
 
 func (c *winClipboard) Get() (string, bool) {
@@ -78,26 +126,13 @@ func (c *winClipboard) Get() (string, bool) {
 		c.seq, c.text, c.ok = seq, "", false
 		return "", false
 	}
-	if !openClipboard() {
+	u, read := readClipboardText()
+	if !read {
 		return c.text, c.ok
 	}
-	defer pCloseClipboard.Call()
-	h, _, _ := pGetClipboardData.Call(cfUnicodeText)
-	if h == 0 {
+	if u == nil {
+		c.seq, c.text, c.ok = seq, "", false
 		return "", false
-	}
-	p, _, _ := pGlobalLock.Call(h)
-	if p == 0 {
-		return "", false
-	}
-	defer pGlobalUnlock.Call(h)
-	size, _, _ := pGlobalSize.Call(h)
-	u := unsafe.Slice((*uint16)(unsafe.Pointer(p)), size/2)
-	for i, v := range u {
-		if v == 0 {
-			u = u[:i]
-			break
-		}
 	}
 	c.seq, c.text, c.ok = seq, toLF(string(utf16.Decode(u))), true
 	return c.text, true
@@ -121,7 +156,7 @@ func (c *winClipboard) Set(text string) {
 		pGlobalFree.Call(h)
 		return
 	}
-	defer pCloseClipboard.Call()
+	defer closeClipboard()
 	pEmptyClipboard.Call()
 	if r, _, _ := pSetClipboardData.Call(cfUnicodeText, h); r == 0 {
 		pGlobalFree.Call(h) // on success the system owns the memory
@@ -143,7 +178,7 @@ func (c *winClipboard) Files() ([]string, bool) {
 	if !openClipboard() {
 		return nil, false // busy: try again at the next look
 	}
-	defer pCloseClipboard.Call()
+	defer closeClipboard()
 	c.fseq = seq
 	h, _, _ := pGetClipboardData.Call(cfHDrop)
 	if h == 0 {
@@ -168,7 +203,7 @@ func (c *winClipboard) SetFiles(paths []string) {
 		u = append(u, 0)
 	}
 	u = append(u, 0)
-	const hdr = 20 // DROPFILES
+	const hdr = 20                                                         // DROPFILES
 	h, _, _ := pGlobalAlloc.Call(gmemMoveable|0x40, uintptr(hdr+len(u)*2)) // GMEM_ZEROINIT
 	if h == 0 {
 		return
@@ -189,11 +224,11 @@ func (c *winClipboard) SetFiles(paths []string) {
 		pGlobalFree.Call(h)
 		return
 	}
+	defer closeClipboard()
 	pEmptyClipboard.Call()
 	if r, _, _ := pSetClipboardData.Call(cfHDrop, h); r == 0 {
 		pGlobalFree.Call(h)
 	}
-	pCloseClipboard.Call()
 	seq, _, _ := pGetClipboardSeq.Call()
 	c.mu.Lock()
 	c.fseq = seq // not sent back to where the files came from

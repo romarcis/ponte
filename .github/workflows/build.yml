@@ -19,6 +19,16 @@ permissions:
   contents: write
 
 jobs:
+  windows-clipboard:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Test on Windows
+        run: go test -count=1 ./...
+
   build:
     runs-on: ubuntu-latest
     steps:

@@ -116,7 +116,11 @@ type testPC struct {
 // newTestPCs starts Ponte several times on this machine, each with its own
 // fake mouse, screen and clipboard.
 func newTestPCs(t *testing.T, names ...string) []*testPC {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	configHome := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", configHome)
+	t.Setenv("APPDATA", configHome) // never overwrite the user's Windows config
+	oldCapture, oldInjector, oldClipboard := makeCapture, makeInjector, makeClipboard
+	t.Cleanup(func() { makeCapture, makeInjector, makeClipboard = oldCapture, oldInjector, oldClipboard })
 	listenAddr = "127.0.0.1:0"
 	switchGuard = 0
 	t.Cleanup(func() { listenAddr = ":24800"; switchGuard = 300 * time.Millisecond })
@@ -130,6 +134,7 @@ func newTestPCs(t *testing.T, names ...string) []*testPC {
 		cur.app = &App{cfg: loadConfig(), code: newPairingCode()}
 		cur.app.cfg.DeviceID = []byte{byte(i + 1), 15: 0}
 		cur.app.cfg.Name = name
+		cur.app.cfg.NoRipple = true // headless tests don't display pointer effects
 		cur.app.cfg.Peers = map[string]*pairedPeer{}
 		cur.app.cfg.Layout = layout{Pos: map[string]cell{cur.app.cfg.id(): {}}}
 		if err := cur.app.start(); err != nil {
@@ -311,7 +316,9 @@ func TestGroup(t *testing.T) {
 }
 
 func TestMigrateOldPairings(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	configHome := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", configHome)
+	t.Setenv("APPDATA", configHome)
 	os.MkdirAll(configDir(), 0o700)
 	os.WriteFile(filepath.Join(configDir(), "config.json"), []byte(`{"device_id":"AAAAAAAAAAAAAAAAAAAAAA==","role":"share","edge":"left",
 		"clients":{"bb":{"name":"CASA","os":"windows","key":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="}}}`), 0o600)
