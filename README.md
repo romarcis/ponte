@@ -36,10 +36,19 @@ Whoever touches a computer's mouse or keyboard controls from there: if
 someone uses the mouse of a computer being controlled, that computer takes it
 back at once, and from there it can control the others.
 
-Text copied on one computer can be pasted on the others; on Windows, files
-copied in Explorer too (up to 200 MB at a time). Files travel only when you
-paste them with Ctrl+V on another computer, and only to that one. It can be
-turned off in Settings.
+Copying text leaves the other computers' clipboards unchanged. When you
+move the pointer to another computer, Ponte retrieves the available text
+there, ready for Ctrl+V or the application's Paste menu. A new local copy
+takes priority, including while the transfer is in progress. Windows also
+retrieves text with Ctrl+V without first switching the pointer.
+Files copied in Windows Explorer travel only when pasted with Ctrl+V,
+and only to that computer (up to 200 MiB at a time). Text is limited to
+1 MiB. Clipboard sharing can be turned off in Settings.
+
+Screens must form a connected map, touching on their top, bottom, left or
+right sides. Offline screens are omitted from the active map: the remaining
+screens move together automatically. Their saved arrangement returns when
+the missing computers reconnect.
 
 Pairing happens once: after that the computers reconnect on their own. The
 trash icon next to a computer removes it from the whole group. The settings
@@ -52,9 +61,9 @@ icon next to the clock): a click opens it again, a right-click offers
 controlled, the mouse and keyboard go straight back; if a computer stops
 answering, they come back on their own within 3 seconds.
 
-All the computers need Ponte 1.4 or later: older versions (with the two roles
-"share" and "receive") cannot talk to it. Pairings made with an older version
-are kept.
+This version uses protocol PONTE/4 for text transferred on demand. Update
+every computer of the group: earlier releases cannot connect to it.
+Existing pairings are kept.
 
 ## First start
 

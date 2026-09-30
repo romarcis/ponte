@@ -7,10 +7,9 @@ import (
 	"time"
 )
 
-// Copied text travels to the other computers: each one watches its own
-// clipboard and sends new text to all; received text is put on the local
-// clipboard. Copied files are only offered: they travel when they are pasted
-// with Ctrl+V on another computer, and only to that one.
+// Copies are offered to the group without changing anyone else's clipboard.
+// Text is fetched when entering another computer (or with Ctrl+V there);
+// files travel only when requested by Ctrl+V.
 
 const maxClipboard = 1 << 20
 
@@ -24,29 +23,35 @@ type clipboard interface {
 var makeClipboard = newClipboard
 
 type clipSync struct {
-	app  *App
-	cb   clipboard
-	mu   sync.Mutex
-	last string
-	in   inbox // files being received
+	app         *App
+	cb          clipboard
+	mu          sync.Mutex
+	pollMu      sync.Mutex // preserve announcement order across the timer and input loop
+	last        string
+	in          inbox // files being received
+	send        func([]byte)
+	revision    uint64 // a local copy invalidates an outstanding paste
+	textID      uint32
+	offeredText string
 
 	// Files copied here, offered to the others.
 	offer   uint32
 	offered []string
 
 	// Files copied on another computer, waiting for a paste here.
-	from   string
-	fromID uint32
-	armed  atomic.Bool
+	from     string
+	fromID   uint32
+	fromText bool
+	armed    atomic.Bool
 
 	// onFiles is told when the files asked for arrived, or cannot come.
 	onFiles func(from string, ok bool)
 }
 
 // startClipSync watches the clipboard until stop is closed, calling send with
-// each new text.
+// clipboard offer.
 func startClipSync(app *App, cb clipboard, send func([]byte), stop <-chan struct{}) *clipSync {
-	c := &clipSync{app: app, cb: cb}
+	c := &clipSync{app: app, cb: cb, send: send}
 	c.last, _ = cb.Get() // what is already there stays local
 	fc, _ := cb.(fileClipboard)
 	if fc != nil {
@@ -61,38 +66,69 @@ func startClipSync(app *App, cb clipboard, send func([]byte), stop <-chan struct
 				return
 			case <-t.C:
 			}
-			if !app.clipboardOn() {
-				continue
-			}
-			if fc != nil {
-				if paths, changed := fc.Files(); changed {
-					if b := c.copied(paths); b != nil {
-						send(b)
-					}
-				}
-			}
-			text, ok := cb.Get()
-			if !ok || text == "" || len(text) > maxClipboard {
-				continue
-			}
-			c.mu.Lock()
-			changed := text != c.last
-			c.last = text
-			c.mu.Unlock()
-			if changed {
-				logf("testo copiato qui (%d caratteri)", len(text))
-				send(wbuf{msgClipboard}.u32(uint32(len(text))).raw(text))
-			}
+			c.poll()
 		}
 	}()
 	return c
 }
 
+// poll also runs immediately before a paste/request, so a new local copy
+// wins even if Ctrl+V arrives before the next 400ms clipboard check.
+func (c *clipSync) poll() {
+	c.pollMu.Lock()
+	defer c.pollMu.Unlock()
+	if !c.app.clipboardOn() {
+		return
+	}
+	var messages [][]byte
+	c.mu.Lock()
+	var paths []string
+	var fileChanged bool
+	if fc, ok := c.cb.(fileClipboard); ok {
+		paths, fileChanged = fc.Files()
+	}
+	text, ok := c.cb.Get()
+	if !ok {
+		text = ""
+	}
+	textChanged := text != c.last || (fileChanged && len(paths) == 0 && text != "")
+	if fileChanged || textChanged {
+		c.revision++
+		c.dropOffer("")
+	}
+	if fileChanged {
+		if b := c.copied(paths); b != nil {
+			messages = append(messages, b)
+		}
+	}
+	if textChanged || (fileChanged && len(paths) > 0) {
+		hadText := c.offeredText != ""
+		c.offeredText = ""
+		c.last = text
+		if textChanged && ok && text != "" && len(text) <= maxClipboard && len(paths) == 0 {
+			c.textID++
+			if c.textID == 0 {
+				c.textID = 1
+			}
+			c.offeredText = text
+			logf("testo copiato qui (%d byte): parte quando si incolla su un altro computer", len(text))
+			messages = append(messages, wbuf{msgTextOffer}.u32(c.textID))
+		} else if hadText {
+			messages = append(messages, wbuf{msgTextOffer}.u32(0))
+		}
+	}
+	c.mu.Unlock()
+	for _, b := range messages {
+		if c.send != nil {
+			c.send(b)
+		}
+	}
+}
+
 // copied notes that the clipboard changed here, with paths the files now on
 // it, and returns the offer for the others (nil for none).
 func (c *clipSync) copied(paths []string) []byte {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	// c.mu held by poll.
 	c.dropOffer("") // copied here: what another computer offers is old
 	had := c.offered != nil
 	c.offered = nil
@@ -115,6 +151,44 @@ func (c *clipSync) copied(paths []string) []byte {
 	return nil
 }
 
+func (c *clipSync) textOfOffer(id uint32) (string, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.offeredText, id != 0 && id == c.textID && c.offeredText != ""
+}
+
+func (c *clipSync) announcements() [][]byte {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	var out [][]byte
+	if c.offeredText != "" {
+		out = append(out, wbuf{msgTextOffer}.u32(c.textID))
+	}
+	if len(c.offered) > 0 {
+		out = append(out, wbuf{msgFileOffer}.u32(c.offer))
+	}
+	return out
+}
+
+// applyText runs only for the response to a pending paste. poll has already
+// checked for new local copies; their revision must still match the request.
+func (c *clipSync) applyText(text string, offer clipboardOffer) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.revision != offer.revision || c.from != offer.from || c.fromID != offer.id || !c.fromText || !c.app.clipboardOn() {
+		return false
+	}
+	c.cb.Set(text)
+	c.last = text
+	c.offeredText = ""
+	c.offered = nil
+	c.dropOffer("")
+	if fc, ok := c.cb.(fileClipboard); ok {
+		fc.Files()
+	} // don't offer the received copy back
+	return true
+}
+
 // offeredFiles returns the files of offer id, if they are still on offer.
 func (c *clipSync) offeredFiles(id uint32) []string {
 	c.mu.Lock()
@@ -126,12 +200,22 @@ func (c *clipSync) offeredFiles(id uint32) []string {
 }
 
 // takeOffer returns the files another computer offers, to ask for them.
-func (c *clipSync) takeOffer() (from string, id uint32, ok bool) {
+type clipboardOffer struct {
+	from     string
+	id       uint32
+	text     bool
+	revision uint64
+}
+
+func (c *clipSync) takeOffer(textOnly bool) (clipboardOffer, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	from, id, ok = c.from, c.fromID, c.from != ""
-	c.dropOffer("")
-	return
+	offer := clipboardOffer{c.from, c.fromID, c.fromText, c.revision}
+	ok := c.from != "" && (!textOnly || c.fromText)
+	if ok && !offer.text {
+		c.dropOffer("")
+	}
+	return offer, ok
 }
 
 // peerGone forgets the files a computer offered, when it disconnects: they
@@ -143,11 +227,31 @@ func (c *clipSync) peerGone(from string) {
 	c.dropOffer(from)
 }
 
+func (c *clipSync) unavailable(from string, id uint32) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.from == from && c.fromID == id && c.fromText {
+		c.dropOffer(from)
+	}
+}
+
+func (c *clipSync) resetOffers() {
+	c.mu.Lock()
+	c.dropOffer("")
+	c.offered, c.offeredText = nil, ""
+	c.revision++
+	c.mu.Unlock()
+	if c.send != nil {
+		c.send(wbuf{msgTextOffer}.u32(0))
+		c.send(wbuf{msgFileOffer}.u32(0))
+	}
+}
+
 // dropOffer forgets the files offered by another computer (by from, when
 // not empty); c.mu held.
 func (c *clipSync) dropOffer(from string) {
 	if from == "" || from == c.from {
-		c.from, c.fromID = "", 0
+		c.from, c.fromID, c.fromText = "", 0, false
 		c.armed.Store(false)
 	}
 }
@@ -163,42 +267,28 @@ func (c *clipSync) received(msg []byte) { c.receivedIn(&c.in, msg) }
 // receivedIn handles a message from one computer; in holds the files it is
 // sending.
 func (c *clipSync) receivedIn(in *inbox, msg []byte) {
-	if msg[0] == msgFileOffer {
+	if msg[0] == msgFileOffer || msg[0] == msgTextOffer {
 		r := &rbuf{b: msg[1:]}
 		id := r.u32()
 		_, fc := c.cb.(fileClipboard)
-		if r.err != nil || !fc || in.from == "" {
+		text := msg[0] == msgTextOffer
+		if r.err != nil || (!text && !fc) || in.from == "" {
 			return
 		}
 		c.mu.Lock()
 		defer c.mu.Unlock()
 		if id == 0 || !c.app.clipboardOn() {
-			c.dropOffer(in.from)
+			if c.fromText == text {
+				c.dropOffer(in.from)
+			}
 			return
 		}
 		c.from, c.fromID = in.from, id
+		c.fromText = text
 		c.armed.Store(true)
 		return
 	}
-	if msg[0] != msgClipboard {
-		c.receivedFiles(in, msg)
-		return
-	}
-	r := &rbuf{b: msg[1:]}
-	n := r.u32()
-	if n > maxClipboard {
-		return
-	}
-	text := string(r.take(int(n)))
-	if r.err != nil || !c.app.clipboardOn() {
-		return
-	}
-	c.mu.Lock()
-	defer c.mu.Unlock() // several computers may send at once
-	// Text copied there: that is what gets pasted now.
-	c.dropOffer("")
-	c.last = text
-	c.cb.Set(text)
+	c.receivedFiles(in, msg)
 }
 
 func toLF(s string) string   { return strings.ReplaceAll(s, "\r\n", "\n") }

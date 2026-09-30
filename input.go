@@ -56,7 +56,7 @@ type inputCapture interface {
 }
 
 // pasteHolder is a capture that can hold back Ctrl+V while armed reports
-// that files copied on another computer are on offer, sending evPaste
+// that clipboard content from another computer is on offer, sending evPaste
 // instead (Windows).
 type pasteHolder interface {
 	HoldPaste(armed func() bool)

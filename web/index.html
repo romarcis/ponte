@@ -272,7 +272,7 @@ kbd{display:inline-block;font-family:inherit;font-weight:600;font-size:12.5px;li
 
     <div class="card setcard">
       <h3>Copia tra i computer</h3>
-      <label class="setrow" id="clipboard"><span class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9 4h6v3H9zM9 12h6M9 16h4"/></svg></span><span class="st"><b>Condividi testo e file copiati</b><small>Copia con Ctrl+C su un computer e incolla con Ctrl+V su un altro. I file partono solo quando li incolli, fino a 200 MB per volta.</small></span><span class="switch" id="clipsw"></span></label>
+      <label class="setrow" id="clipboard"><span class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9 4h6v3H9zM9 12h6M9 16h4"/></svg></span><span class="st"><b>Condividi testo e file copiati</b><small>Copia senza modificare gli appunti degli altri PC. Il testo arriva quando passi a un altro PC, pronto anche per Incolla dal menu. I file partono con Ctrl+V, fino a 200 MB.</small></span><span class="switch" id="clipsw"></span></label>
     </div>
 
     <div class="card setcard">
@@ -454,7 +454,7 @@ function renderAlert() {
 }
 
 /* ---------- main ---------- */
-let pick = null, dragging = false; // the computer being moved on the map
+let pick = null, dragging = false, dragId = null; // the computer being moved on the map
 
 const peerName = id => (S.peers.find(p => p.id === id) || {}).name || "un altro computer";
 
@@ -492,7 +492,12 @@ function renderMap() {
   for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
     const area = `grid-area:${y - y0 + 1}/${x - x0 + 1}`;
     const id = ids.find(i => L[i].x === x && L[i].y === y);
-    if (!id) { h += `<div class="cellslot" style="${area}" data-x="${x}" data-y="${y}">Metti qui</div>`; continue; }
+    if (!id) {
+      const adjacent = ids.some(i => Math.abs(L[i].x - x) + Math.abs(L[i].y - y) === 1);
+      const allowed = adjacent && (!pick || canPlace(pick, x, y));
+      h += allowed ? `<div class="cellslot" style="${area}" data-x="${x}" data-y="${y}">Metti qui</div>` : `<div style="${area}"></div>`;
+      continue;
+    }
     const me = id === S.id, p = peers[id] || {};
     const sub = me ? (S.state === "controlled" ? "lo usa " + esc(peerName(S.by)) : "questo computer") : p.online ? "" : p.old ? "da aggiornare" : p.newer ? "aggiorna questo PC" : "non raggiungibile";
     const cls = ["tile", me ? "me" : "", !me && !p.online ? "off" : "", id === here ? "live" : "", id === pick ? "sel" : ""].join(" ");
@@ -504,9 +509,9 @@ function renderMap() {
   m.style.gridTemplateColumns = `repeat(${cols}, auto)`;
   m.classList.toggle("picking", !!pick);
   set("map", h);
-  $("#maphint").textContent = pick ? "Tocca il posto dove si trova sulla scrivania."
+  $("#maphint").textContent = pick ? "Scegli un posto adiacente, senza separare gli altri schermi."
     : ids.length < 2 ? "Qui compariranno gli altri computer, quando li colleghi."
-    : S.edgeSwitch ? "Trascina gli schermi come sono sulla scrivania: il puntatore passa da uno all'altro dal bordo che si toccano."
+    : S.edgeSwitch ? "Gli schermi devono toccarsi su un lato. Quando un PC si scollega, quelli online si avvicinano; al ritorno si ripristina la disposizione."
     : "Trascina gli schermi come sono sulla scrivania. Su questo computer si passa all'altro con il tasto Bloc Scorr.";
 }
 
@@ -545,28 +550,47 @@ function renderState() {
 function clipTip() {
   if (!S.clipboard) return "";
   const txt = S.clipboardOK
-    ? (S.os === "windows" ? "Il testo e i file che copi su un computer si incollano anche sugli altri." : "Il testo che copi su un computer si incolla anche sugli altri.")
+    ? (S.os === "windows" ? "Il testo arriva quando passi a questo PC: poi usa Ctrl+V o Incolla dal menu. Per i file usa Ctrl+V." : "Il testo arriva quando passi a questo computer, pronto per Ctrl+V o Incolla dal menu.")
     : "Per condividere il testo copiato installa <b>xclip</b> (X11) o <b>wl-clipboard</b> (Wayland) su questo computer.";
   return `<div class="tip" style="text-align:left">${icon.clip}<span>${txt}</span></div>`;
 }
 
 async function moveTo(id, x, y) {
+  if (!canPlace(id, Number(x), Number(y))) { toast("Ogni schermo deve toccarne un altro, senza separare il gruppo."); return; }
   pick = null;
-  S = await api("/api/layout", {id, x: String(x), y: String(y)}); render();
+  const result = await api("/api/layout", {id, x: String(x), y: String(y)});
+  if (result.error) { toast(result.error); refresh(); return; }
+  S = result; render();
+}
+
+function canPlace(id, x, y) {
+  const L = Object.fromEntries(Object.entries(S.layout || {}).map(([k, p]) => [k, {...p}]));
+  if (!L[id]) return false;
+  const other = Object.keys(L).find(k => k !== id && L[k].x === x && L[k].y === y);
+  if (other) L[other] = L[id];
+  L[id] = {x, y};
+  const cells = Object.values(L), seen = new Set(), queue = [cells[0]];
+  while (queue.length) {
+    const p = queue.shift(), key = `${p.x},${p.y}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    for (const q of cells) if (Math.abs(p.x-q.x) + Math.abs(p.y-q.y) === 1 && !seen.has(`${q.x},${q.y}`)) queue.push(q);
+  }
+  return seen.size === cells.length;
 }
 
 document.addEventListener("dragstart", e => {
   const t = e.target.closest("[data-tile]");
   if (!t) return;
-  dragging = true; pick = null;
+  dragging = true; dragId = t.dataset.tile; pick = null;
   e.dataTransfer.setData("text/plain", t.dataset.tile);
   e.dataTransfer.effectAllowed = "move";
   setTimeout(() => $("#map").classList.add("dragging"), 0);
 });
-document.addEventListener("dragend", () => { dragging = false; $("#map").classList.remove("dragging"); document.querySelectorAll(".over").forEach(o => o.classList.remove("over")); });
+document.addEventListener("dragend", () => { dragging = false; dragId = null; $("#map").classList.remove("dragging"); document.querySelectorAll(".over").forEach(o => o.classList.remove("over")); });
 document.addEventListener("dragover", e => {
   const c = e.target.closest(".cellslot, [data-tile]");
-  if (!c || !dragging) return;
+  if (!c || !dragging || !canPlace(dragId, Number(c.dataset.x), Number(c.dataset.y))) return;
   e.preventDefault();
   document.querySelectorAll(".over").forEach(o => o !== c && o.classList.remove("over"));
   c.classList.add("over");
@@ -623,7 +647,7 @@ document.addEventListener("click", async e => {
     else { document.body.innerHTML = '<div class="app"><div class="card center" style="margin-top:80px"><h2>Ponte è stato rimosso</h2><p class="muted">Il servizio e l\'avvio con il computer sono stati tolti. Ora puoi cancellare Ponte.exe.</p></div></div>'; clearInterval(timer); }
   }
   else if (t.id === "autostart") { e.preventDefault(); S = await api("/api/autostart", {on: S.autostart ? "0" : "1"}); render(); toast(S.autostart ? "Ponte partirà insieme al computer" : "Avvio automatico disattivato"); }
-  else if (t.id === "clipboard") { e.preventDefault(); S = await api("/api/clipboard", {on: S.clipboard ? "0" : "1"}); render(); toast(S.clipboard ? "Testo e file copiati passano da un computer all'altro" : "Condivisione di testo e file disattivata"); }
+  else if (t.id === "clipboard") { e.preventDefault(); S = await api("/api/clipboard", {on: S.clipboard ? "0" : "1"}); render(); toast(S.clipboard ? "Condivisione degli appunti attiva" : "Condivisione di testo e file disattivata"); }
   else if (t.id === "notify") { e.preventDefault(); S = await api("/api/notify", {on: S.notify ? "0" : "1"}); render(); }
   else if (t.id === "ripple") { e.preventDefault(); S = await api("/api/ripple", {on: S.ripple ? "0" : "1"}); render(); toast(S.ripple ? "Il puntatore si mostra con dei cerchi a ogni passaggio" : "Cerchi intorno al puntatore disattivati"); }
   else if (t.dataset.theme !== undefined) { S = await api("/api/theme", {theme: t.dataset.theme}); render(); }

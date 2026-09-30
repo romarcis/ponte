@@ -31,7 +31,7 @@ import (
 // listener on the network sees nothing, and without the code/key nobody
 // can connect.
 
-const protoMagic = "PONTE/3\n"
+const protoMagic = "PONTE/4\n"
 
 const maxFrame = 4 << 20
 

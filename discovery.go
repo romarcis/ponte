@@ -22,13 +22,13 @@ type beacon struct {
 	Name string `json:"name"`
 	OS   string `json:"os"`
 	Port int    `json:"port"`
-	// Proto is the protocol version (PONTE/3 from 1.4 on; missing before),
+	// Proto is the protocol version (PONTE/4 for text fetched on demand),
 	// so the window can say which computer needs an update.
 	Proto   int    `json:"proto,omitempty"`
 	Version string `json:"version,omitempty"`
 }
 
-const protoVersion = 3
+const protoVersion = 4
 
 type foundPeer struct {
 	ID     string `json:"id"`

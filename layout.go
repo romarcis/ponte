@@ -42,13 +42,120 @@ func (l *layout) at(c cell) (string, bool) {
 }
 
 // neighbor returns who sits next to id in direction dir.
-func (l *layout) neighbor(id, dir string) (string, bool) {
+func (l layout) neighbor(id, dir string) (string, bool) {
 	p, ok := l.Pos[id]
 	if !ok {
 		return "", false
 	}
-	d := dirs[dir]
+	d, valid := dirs[dir]
+	if !valid {
+		return "", false
+	}
 	return l.at(cell{p.X + d.X, p.Y + d.Y})
+}
+
+// connected rejects isolated/diagonal screens and overlapping cells.
+func (l *layout) connected() bool {
+	if len(l.Pos) == 0 {
+		return true
+	}
+	occupied := map[cell]bool{}
+	for _, p := range l.Pos {
+		occupied[p] = true
+	}
+	if len(occupied) != len(l.Pos) {
+		return false
+	}
+	seen := map[cell]bool{}
+	queue := []cell{l.Pos[l.order()[0]]}
+	for len(queue) > 0 {
+		p := queue[0]
+		queue = queue[1:]
+		if seen[p] {
+			continue
+		}
+		seen[p] = true
+		for _, d := range dirs {
+			q := cell{p.X + d.X, p.Y + d.Y}
+			if occupied[q] && !seen[q] {
+				queue = append(queue, q)
+			}
+		}
+	}
+	return len(seen) == len(occupied)
+}
+
+func (l *layout) canMove(id string, to cell) bool {
+	if _, ok := l.Pos[id]; !ok {
+		return false
+	}
+	moved := l.clone()
+	moved.move(id, to)
+	return moved.connected()
+}
+
+// active compacts only the online screens. The saved map stays intact, so
+// reconnecting a middle computer restores its place in the original row.
+func (l *layout) active(self string, online map[string]bool) layout {
+	live := layout{Stamp: l.Stamp, Pos: map[string]cell{}}
+	for id, p := range l.Pos {
+		if id == self || online[id] {
+			live.Pos[id] = p
+		}
+	}
+	if live.connected() {
+		return live
+	}
+	ids := live.order()
+	if len(ids) == 0 {
+		return live
+	}
+	result := layout{Stamp: l.Stamp, Pos: map[string]cell{ids[0]: live.Pos[ids[0]]}}
+	remaining := append([]string{}, ids[1:]...)
+	for len(remaining) > 0 {
+		// Keep existing adjacent screens in their exact places first.
+		index := -1
+		for i, id := range remaining {
+			p := live.Pos[id]
+			if _, used := result.at(p); used {
+				continue
+			}
+			for _, d := range dirs {
+				if _, ok := result.at(cell{p.X + d.X, p.Y + d.Y}); ok {
+					index = i
+					break
+				}
+			}
+			if index >= 0 {
+				break
+			}
+		}
+		if index >= 0 {
+			id := remaining[index]
+			result.Pos[id] = live.Pos[id]
+			remaining = append(remaining[:index], remaining[index+1:]...)
+			continue
+		}
+		id := remaining[0]
+		wanted := live.Pos[id]
+		best := cell{}
+		distance := int(^uint(0) >> 1)
+		for _, p := range result.Pos {
+			for _, d := range dirs {
+				candidate := cell{p.X + d.X, p.Y + d.Y}
+				if _, used := result.at(candidate); used {
+					continue
+				}
+				delta := abs(candidate.X-wanted.X) + abs(candidate.Y-wanted.Y)
+				if delta < distance || (delta == distance && (candidate.Y < best.Y || (candidate.Y == best.Y && candidate.X < best.X))) {
+					best, distance = candidate, delta
+				}
+			}
+		}
+		result.Pos[id] = best
+		remaining = remaining[1:]
+	}
+	return result
 }
 
 // dirTo tells in which direction to is right next to from.

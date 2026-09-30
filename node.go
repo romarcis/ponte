@@ -118,15 +118,19 @@ type node struct {
 	moved     time.Time // last motion of this computer's own mouse
 	offEdge   bool      // the pointer left the screen edges since another computer let go
 
-	// Ctrl+V held back until the files copied on another computer arrive.
+	// Ctrl+V held back until the requested clipboard content arrives.
 	paste   *pasteWait
 	pasting atomic.Bool // for the keyboard hook
 }
 
 type pasteWait struct {
-	from string // the computer sending the files
-	by   *link  // who pressed Ctrl+V: the controlling computer, nil here
-	at   time.Time
+	from     string // the computer sending the files
+	id       uint32
+	text     bool
+	revision uint64
+	paste    bool  // false: prepare the text for any paste command, including menus
+	by       *link // who pressed Ctrl+V: the controlling computer, nil here
+	at       time.Time
 }
 
 const pasteTimeout = 2 * time.Minute
@@ -455,7 +459,7 @@ func (n *node) run(l *link) {
 		if err == nil && len(msg) > 0 {
 			l.seen.Store(time.Now().UnixNano())
 			switch msg[0] {
-			case msgClipboard, msgFileOffer, msgFileStart, msgFileEntry, msgFileData, msgFileEnd:
+			case msgFileOffer, msgTextOffer, msgFileStart, msgFileEntry, msgFileData, msgFileEnd:
 				n.cs.receivedIn(&l.in, msg)
 				continue
 			case msgBye:
@@ -521,6 +525,9 @@ func (n *node) added(l *link) {
 	}
 	l.send(encLayout(n.app.layoutCopy()))
 	l.send(n.app.members())
+	for _, b := range n.cs.announcements() {
+		l.send(b)
+	}
 	n.publish()
 }
 
@@ -770,19 +777,41 @@ func (n *node) handleMsg(l *link, msg []byte) {
 		// Windows there discards what Ponte replays: give the mouse back
 		// instead of leaving it stuck.
 		if n.target == l {
-			dir, _ := n.app.layoutDir(l.id, n.id)
+			active := n.activeLayout()
+			dir, _ := active.dirTo(l.id, n.id)
 			f := n.frac(dir, l)
 			n.target = n.leaveTarget()
 			n.leave(dir, f, l.name+" non accetta input: "+why)
 			notify(l.name+" non accetta il mouse", "Su "+l.name+" "+why+": Ponte non può comandarlo. Il mouse è tornato qui.")
 		}
 	case msgFileWant:
+		n.cs.poll()
 		id := r.u32()
-		if paths := n.cs.offeredFiles(id); r.err == nil && paths != nil {
+		if paths := n.cs.offeredFiles(id); r.err == nil && paths != nil && n.app.clipboardOn() {
 			logf("%s incolla i file copiati qui: li invio", l.name)
 			go sendFiles(paths, l.send)
 		} else {
 			l.send(wbuf{msgFileEnd}.u16(0)) // no longer on offer
+		}
+	case msgTextWant:
+		id := r.u32()
+		if r.err != nil {
+			return
+		}
+		n.cs.poll()
+		text, ok := n.cs.textOfOffer(id)
+		if !ok || !n.app.clipboardOn() {
+			text = ""
+		}
+		l.send(wbuf{msgClipboard}.u32(id).u32(uint32(len(text))).raw(text))
+	case msgClipboard:
+		id, size := r.u32(), r.u32()
+		if r.err != nil || size > maxClipboard {
+			return
+		}
+		text := string(r.take(int(size)))
+		if r.err == nil {
+			n.textArrived(l, id, text)
 		}
 	case msgTakeover:
 		if n.target == l {
@@ -837,6 +866,7 @@ func (n *node) replay(l *link, kind byte, r *rbuf) {
 		return
 	}
 	if kind == msgEnter {
+		n.endPaste()
 		x, y := r.i32(), r.i32()
 		if n.by != nil && n.by != l {
 			n.by.send([]byte{msgTakeover})
@@ -853,6 +883,7 @@ func (n *node) replay(l *link, kind byte, r *rbuf) {
 			showRipple(n.app.rippleRGB())
 		}
 		n.publish()
+		n.prepareText(l)
 		return
 	}
 	if n.by != l {
@@ -944,11 +975,13 @@ func (n *node) release() {
 // takeBack gives this computer back to whoever uses its own mouse or
 // keyboard, and tells the computer that was controlling it.
 func (n *node) takeBack() {
+	n.endPaste()
 	l := n.by
 	l.send([]byte{msgTakeover})
 	n.release()
 	logf("<- si usa il mouse di questo computer: %s lo lascia", l.name)
 	n.publish()
+	n.prepareText(nil)
 }
 
 // ---------- this computer's mouse and keyboard ----------
@@ -1094,7 +1127,7 @@ func (n *node) atEdge(x, y int) {
 		if !e.hit {
 			continue
 		}
-		if id, ok := n.app.layoutNeighbor(n.id, e.dir); ok {
+		if id, ok := n.activeLayout().neighbor(n.id, e.dir); ok {
 			if l := n.links[id]; l != nil {
 				n.enter(l, e.dir, e.f, false, "bordo dello schermo")
 				return
@@ -1112,6 +1145,8 @@ const cursorRoom = 40
 // enter moves the pointer onto l's screen, arriving from its side opposite
 // to dir at fraction f along that edge; center puts it in the middle.
 func (n *node) enter(l *link, dir string, f float64, center bool, why string) {
+	// Advertise a just-made local copy before the destination sees Enter.
+	n.cs.poll()
 	w, h := float64(l.w), float64(l.h)
 	switch {
 	case center:
@@ -1180,7 +1215,7 @@ func (n *node) move(dx, dy float64) {
 		dir = "bottom"
 	}
 	if dir != "" && len(n.heldBtn) == 0 && n.settled() {
-		if id, ok := n.app.layoutNeighbor(t.id, dir); ok {
+		if id, ok := n.activeLayout().neighbor(t.id, dir); ok {
 			f := n.frac(dir, t)
 			if id == n.id && n.edgeOK {
 				n.target = n.leaveTarget()
@@ -1198,6 +1233,15 @@ func (n *node) move(dx, dy float64) {
 	t.send(encMouse(int(n.rx), int(n.ry)))
 }
 
+func (n *node) activeLayout() layout {
+	online := map[string]bool{}
+	for id := range n.links {
+		online[id] = true
+	}
+	l := n.app.layoutCopy()
+	return l.active(n.id, online)
+}
+
 // leave gives the pointer back to this computer; the caller already let go
 // of the target. With dir, the pointer comes in from the edge crossed going
 // in dir, at fraction f along it; without, it stays where it was parked.
@@ -1205,6 +1249,7 @@ func (n *node) leave(dir string, f float64, why string) {
 	if n.cap == nil {
 		return
 	}
+	n.endPaste()
 	n.switched = time.Now()
 	logf("<- torno a questo computer (%s)", why)
 	clear(n.held)
@@ -1231,6 +1276,7 @@ func (n *node) leave(dir string, f float64, why string) {
 		showRipple(n.app.rippleRGB())
 	}
 	n.publish()
+	n.prepareText(nil)
 }
 
 // next is Scroll Lock: on to the next computer of the map that is on, and
@@ -1282,10 +1328,10 @@ func awayFromCorners(v, size float64) float64 {
 // capsKeys are logged on the controlled computer, to follow capital letters.
 var capsKeys = map[uint16]string{42: "Shift sinistro", 54: "Shift destro", 58: "Bloc Maiusc"}
 
-// ---------- pasting files copied on another computer ----------
+// ---------- pasting content copied on another computer ----------
 
 // holdPaste tells whether a V pressed with keys held is a Ctrl+V to hold
-// back until the files copied on another computer arrive.
+// back until the clipboard content copied on another computer arrives.
 func (n *node) holdPaste(keys map[uint16]bool) bool {
 	return (keys[keyLeftCtrl] || keys[keyRightCtrl]) && !keys[keyLeftAlt] && !keys[keyRightAlt] &&
 		(n.cs.armed.Load() || n.paste != nil)
@@ -1294,27 +1340,68 @@ func (n *node) holdPaste(keys map[uint16]bool) bool {
 // requestPaste asks for the files on offer; they are pasted when they
 // arrive. by is the computer that pressed Ctrl+V, nil for this one.
 func (n *node) requestPaste(by *link) {
+	n.requestClipboard(by, true)
+}
+
+func (n *node) prepareText(by *link) {
+	n.requestClipboard(by, false)
+}
+
+func (n *node) requestClipboard(by *link, paste bool) {
 	if n.paste != nil {
+		if paste && n.paste.by == by {
+			n.paste.paste = true
+		}
 		return // already on their way
 	}
-	from, id, ok := n.cs.takeOffer()
-	l := n.links[from]
-	if !ok || l == nil {
-		logf("incolla: nessun file da attendere (offerta %v, collegamento %v), incollo quello che c'è", ok, l != nil)
-		n.pasteKeys(by) // nothing to wait for: paste what is here
+	n.cs.poll()
+	offer, ok := n.cs.takeOffer(!paste)
+	l := n.links[offer.from]
+	if !ok || l == nil || !n.app.clipboardOn() {
+		if paste {
+			logf("incolla: nessun contenuto da attendere, incollo gli appunti locali")
+			n.pasteKeys(by)
+		} // nothing to wait for: paste what is here
 		return
 	}
-	n.paste = &pasteWait{from: from, by: by, at: time.Now()}
+	n.paste = &pasteWait{from: offer.from, id: offer.id, text: offer.text, revision: offer.revision, paste: paste, by: by, at: time.Now()}
 	n.pasting.Store(true)
-	logf("incolla: chiedo a %s i file copiati", l.name)
-	l.send(wbuf{msgFileWant}.u32(id))
+	if offer.text {
+		logf("incolla: chiedo a %s il testo copiato", l.name)
+		l.send(wbuf{msgTextWant}.u32(offer.id))
+	} else {
+		logf("incolla: chiedo a %s i file copiati", l.name)
+		l.send(wbuf{msgFileWant}.u32(offer.id))
+	}
+}
+
+func (n *node) textArrived(l *link, id uint32, text string) {
+	p := n.paste
+	if p == nil || !p.text || p.from != l.id || p.id != id {
+		return
+	}
+	n.endPaste()
+	if n.by != p.by || n.target != nil || (p.by != nil && n.links[p.by.id] != p.by) {
+		return
+	}
+	// A local copy made while waiting must not be overwritten by the reply.
+	n.cs.poll()
+	if text != "" && !n.cs.applyText(text, clipboardOffer{p.from, p.id, true, p.revision}) {
+		logf("incolla: mantengo la nuova copia locale")
+	}
+	if text == "" {
+		n.cs.unavailable(p.from, p.id)
+	}
+	if p.paste {
+		n.pasteKeys(p.by)
+	}
 }
 
 // filesArrived pastes the files asked for, now on the clipboard; when they
 // cannot come, what is on the clipboard.
 func (n *node) filesArrived(from string, ok bool) {
 	p := n.paste
-	if p == nil || p.from != from {
+	if p == nil || p.text || p.from != from {
 		return
 	}
 	n.endPaste()

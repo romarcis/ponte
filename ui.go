@@ -84,7 +84,9 @@ func serveUI(ln net.Listener, app *App) {
 		x, errX := strconv.Atoi(b["x"])
 		y, errY := strconv.Atoi(b["y"])
 		if errX == nil && errY == nil && abs(x) < 50 && abs(y) < 50 {
-			app.moveScreen(b["id"], cell{x, y})
+			if !app.moveScreen(b["id"], cell{x, y}) {
+				return map[string]string{"error": "Ogni schermo deve toccarne un altro su un lato, senza separare il gruppo."}
+			}
 		}
 		return state()
 	})

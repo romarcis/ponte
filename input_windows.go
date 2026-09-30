@@ -249,7 +249,7 @@ func (c *winCapture) SetGrab(on bool) {
 
 func (c *winCapture) HoldPaste(armed func() bool) { c.paste.Store(&armed) }
 
-// holdPaste tells whether to hold back this V: Ctrl+V while files copied on
+// holdPaste tells whether to hold back this V: Ctrl+V while content copied on
 // another computer are on offer. Hook thread only.
 func (c *winCapture) holdPaste(vk uint32) bool {
 	f := c.paste.Load()
@@ -396,7 +396,7 @@ var keyHookCB = syscall.NewCallback(func(nCode, wParam, lParam uintptr) uintptr 
 			c.send(inputEvent{kind: evKey, code: code, val: state})
 			if state != 0 && c.holdPaste(k.vk) {
 				if state == 1 {
-					logf("   Ctrl+V trattenuto: aspetto i file copiati su un altro computer")
+					logf("   Ctrl+V trattenuto: aspetto gli appunti dell'altro computer")
 					c.send(inputEvent{kind: evPaste})
 				}
 				return 1

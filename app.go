@@ -127,6 +127,7 @@ func (a *App) status() status {
 		p.Old = !p.Online && (old[p.ID] || v.errs[p.ID] == "old")
 		p.Newer = !p.Online && newer[p.ID]
 	}
+	s.Layout = (&layout{Pos: s.Layout}).active(s.ID, v.online).Pos
 	return s
 }
 
@@ -213,7 +214,11 @@ func (a *App) setClipboard(on bool) {
 	a.mu.Lock()
 	a.cfg.NoClipboard = !on
 	a.cfg.save()
+	n := a.node
 	a.mu.Unlock()
+	if !on && n != nil {
+		n.call(func() { n.endPaste(); n.cs.resetOffers() })
+	}
 }
 
 func (a *App) rippleOn() bool {
@@ -513,21 +518,37 @@ func (a *App) adoptLayout(l layout, self string) {
 
 // moveScreen puts a computer on another cell of the map, from the window,
 // and tells the others.
-func (a *App) moveScreen(id string, c cell) {
+func (a *App) moveScreen(id string, c cell) bool {
 	a.mu.Lock()
-	if _, ok := a.cfg.Layout.Pos[id]; !ok {
-		a.mu.Unlock()
-		return
+	n := a.node
+	a.mu.Unlock()
+	online := map[string]bool{}
+	if n != nil {
+		online = n.snapshot().online
 	}
-	a.cfg.Layout.move(id, c)
-	a.cfg.Layout.Stamp = nextStamp(a.cfg.Layout.Stamp)
+	a.mu.Lock()
+	live := a.cfg.Layout.active(a.cfg.id(), online)
+	if !live.canMove(id, c) {
+		a.mu.Unlock()
+		return false
+	}
+	live.move(id, c)
+	// Retain offline computers in the saved map, in free adjacent slots.
+	for _, other := range a.cfg.Layout.order() {
+		if _, present := live.Pos[other]; !present {
+			live.place(other, a.cfg.id())
+		}
+	}
+	live.Stamp = nextStamp(a.cfg.Layout.Stamp)
+	a.cfg.Layout = live
 	a.cfg.save()
 	l := a.cfg.Layout.clone()
-	n := a.node
+	n = a.node
 	a.mu.Unlock()
 	if n != nil {
 		n.broadcast(encLayout(l))
 	}
+	return true
 }
 
 func (a *App) forget(id string) {

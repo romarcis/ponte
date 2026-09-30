@@ -20,7 +20,7 @@ const (
 	msgEnter     = 7 // x, y int32
 	msgLeave     = 8
 	msgPing      = 9
-	msgClipboard = 10 // text u32 length + UTF-8 bytes, both directions
+	msgClipboard = 10 // requested offer id u32, text u32 length + UTF-8 bytes (0 length: unavailable)
 	msgBye       = 11 // the sender is closing Ponte
 	msgBlocked   = 12 // to the controller: Windows refuses the replayed input; reason string
 
@@ -42,6 +42,8 @@ const (
 	// are pasted with Ctrl+V.
 	msgFileOffer = 22 // id u32 (0: the offer is withdrawn)
 	msgFileWant  = 23 // id u32: send the files of this offer
+	msgTextOffer = 24 // id u32 (0: withdraw); no text is sent yet
+	msgTextWant  = 25 // id u32: send the text of this offer
 )
 
 // Mouse buttons.

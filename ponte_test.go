@@ -78,8 +78,12 @@ func (f *fakeClip) Files() ([]string, bool) {
 	f.changed = false
 	return f.files, c
 }
-func (f *fakeClip) SetFiles(p []string)      { f.mu.Lock(); f.files = p; f.mu.Unlock() }
-func (f *fakeClip) copyFiles(p []string)     { f.mu.Lock(); f.files, f.changed = p, true; f.mu.Unlock() }
+func (f *fakeClip) SetFiles(p []string) { f.mu.Lock(); f.files, f.text = p, ""; f.mu.Unlock() }
+func (f *fakeClip) copyFiles(p []string) {
+	f.mu.Lock()
+	f.files, f.text, f.changed = p, "", true
+	f.mu.Unlock()
+}
 func (f *fakeClip) pasted() (files []string) { f.mu.Lock(); defer f.mu.Unlock(); return f.files }
 
 func (f *fakeClip) Get() (string, bool) {
@@ -87,7 +91,11 @@ func (f *fakeClip) Get() (string, bool) {
 	defer f.mu.Unlock()
 	return f.text, f.text != ""
 }
-func (f *fakeClip) Set(t string)    { f.mu.Lock(); f.text = t; f.mu.Unlock() }
+func (f *fakeClip) Set(t string) {
+	f.mu.Lock()
+	f.text, f.files, f.changed = t, nil, true
+	f.mu.Unlock()
+}
 func (f *fakeClip) Available() bool { return true }
 
 func waitFor(t *testing.T, what string, cond func() bool) {
@@ -182,13 +190,15 @@ func TestGroup(t *testing.T) {
 	waitFor(t, "c linked to a and b", func() bool { return c.online(a) && c.online(b) && b.online(c) })
 	waitFor(t, "c on every map", func() bool { return a.pos(c) == cell{-1, 0} && b.pos(c) == cell{-1, 0} && c.pos(b) == cell{1, 0} })
 
-	// Copied text reaches every computer.
+	// A copy is offered without overwriting other computers' clipboards.
 	a.clip.Set("ciao a tutti")
-	waitFor(t, "clipboard to b and c", func() bool {
-		tb, _ := b.clip.Get()
-		tc, _ := c.clip.Get()
-		return tb == "ciao a tutti" && tc == "ciao a tutti"
-	})
+	waitFor(t, "text offered to b and c", func() bool { return b.app.node.cs.armed.Load() && c.app.node.cs.armed.Load() })
+	if tb, _ := b.clip.Get(); tb != "" {
+		t.Fatal("copy overwrote b's clipboard before switching")
+	}
+	if tc, _ := c.clip.Get(); tc != "" {
+		t.Fatal("copy overwrote c's clipboard before switching")
+	}
 
 	// Move c to the right of b, from a: every map follows.
 	a.app.moveScreen(c.id(), cell{2, 0})
@@ -203,6 +213,10 @@ func TestGroup(t *testing.T) {
 	a.cap.ch <- inputEvent{kind: evMotion}
 	a.cap.ch <- inputEvent{kind: evPos, x: 999, y: 400}
 	waitFor(t, "enter b", func() bool { return b.inj.last() == "mouse 0 450" })
+	waitFor(t, "text ready for b's Paste menu", func() bool { text, _ := b.clip.Get(); return text == "ciao a tutti" })
+	if tc, _ := c.clip.Get(); tc != "" {
+		t.Fatal("entering b overwrote c's clipboard")
+	}
 	if !a.cap.grabbed() {
 		t.Fatal("a should grab its mouse")
 	}
@@ -217,6 +231,7 @@ func TestGroup(t *testing.T) {
 	// On past b's right edge, straight to c.
 	a.cap.ch <- inputEvent{kind: evRel, x: 1700, y: 0}
 	waitFor(t, "enter c from b", func() bool { return c.inj.last() == "mouse 0 450" })
+	waitFor(t, "text ready on c", func() bool { text, _ := c.clip.Get(); return text == "ciao a tutti" })
 	waitFor(t, "b released", func() bool { return b.app.status().State == "ready" && b.inj.has("cursor false") })
 
 	// Back left through b, then home to a.
